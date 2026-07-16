@@ -1,0 +1,6 @@
+{
+  "name": "Naim Shop",
+  "description": "Naim Shop: A high-fidelity e-commerce application with automated category-product linking, dynamic banner replacement, and strict category-wise product placement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
