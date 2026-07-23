@@ -222,19 +222,16 @@ export default function Account() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      const { data, error } = await authClient.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword
       });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Invalid email or password. Please try again.");
+
+      if (error) {
+        throw new Error(error.message || "Invalid email or password. Please try again.");
       }
-      
-      if (data.user) {
+
+      if (data?.user) {
         const user = data.user;
         setLoggedInUser(user);
         localStorage.setItem("loggedInCustomer", JSON.stringify(user));

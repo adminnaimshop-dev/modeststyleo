@@ -27,19 +27,13 @@ export default function AdminLogin() {
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
+      const { data, error } = await authClient.auth.signInWithPassword({ email, password });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed. Please check your credentials.');
+      if (error) {
+        throw new Error(error.message || 'Login failed. Please check your credentials.');
       }
 
-      if (data.user) {
+      if (data?.user) {
         if (data.user.role === 'admin') {
           localStorage.setItem("adminAuth", "true");
           localStorage.setItem("adminEmail", data.user.email);

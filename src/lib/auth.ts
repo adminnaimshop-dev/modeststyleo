@@ -1,4 +1,6 @@
-// Client-side Auth compatibility layer routing to Hostinger MySQL API endpoints
+// Client-side Auth compatibility layer routing to Supabase Auth & fallback API endpoints
+import { getSupabaseClient } from './supabase';
+
 export type AuthClient = any;
 
 // Storage helper
@@ -15,17 +17,41 @@ interface Session {
       avatar_url?: string;
     };
     phone?: string;
+    role?: string;
   };
 }
 
-class MySQLAuthCompatibility {
+class SupabaseAuthCompatibility {
   private listeners: Array<(event: string, session: Session | null) => void> = [];
 
   constructor() {
-    // Check initial session from storage
+    // Check and subscribe to Supabase Auth state changes if available
     setTimeout(() => {
+      const client = getSupabaseClient();
+      if (client) {
+        client.auth.onAuthStateChange((event, sbSession) => {
+          if (sbSession?.user) {
+            const user = {
+              id: sbSession.user.id,
+              email: sbSession.user.email || '',
+              full_name: sbSession.user.user_metadata?.full_name || sbSession.user.user_metadata?.name || '',
+              phone: sbSession.user.phone || sbSession.user.user_metadata?.phone || '',
+              avatar_url: sbSession.user.user_metadata?.avatar_url || '',
+              role: sbSession.user.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer'
+            };
+            this.saveLocalSession(user);
+            this.triggerListeners(event, this.getLocalSession());
+          } else if (event === 'SIGNED_OUT') {
+            this.clearLocalSession();
+            this.triggerListeners('SIGNED_OUT', null);
+          }
+        });
+      }
+
       const session = this.getLocalSession();
-      this.triggerListeners('SIGNED_IN', session);
+      if (session) {
+        this.triggerListeners('SIGNED_IN', session);
+      }
     }, 100);
   }
 
@@ -39,12 +65,13 @@ class MySQLAuthCompatibility {
             id: u.id || u.uid,
             email: u.email,
             user_metadata: {
-              full_name: u.name,
-              name: u.name,
+              full_name: u.name || u.full_name,
+              name: u.name || u.full_name,
               phone: u.phone,
-              avatar_url: u.photo
+              avatar_url: u.photo || u.avatar_url
             },
-            phone: u.phone
+            phone: u.phone,
+            role: u.role || (u.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer')
           }
         };
       }
@@ -55,18 +82,19 @@ class MySQLAuthCompatibility {
   }
 
   private saveLocalSession(user: any) {
+    const role = user.role || (user.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer');
     const userData = {
       id: user.id,
       uid: user.id,
-      name: user.full_name || 'Customer',
+      name: user.full_name || user.name || 'Customer',
       email: user.email,
       phone: user.phone || '',
       photo: user.avatar_url || '',
-      role: user.role || 'customer',
+      role: role,
       lastLogin: new Date().toISOString()
     };
     localStorage.setItem('loggedInCustomer', JSON.stringify(userData));
-    if (userData.role === 'admin') {
+    if (role === 'admin') {
       localStorage.setItem('adminAuth', 'true');
       localStorage.setItem('adminEmail', userData.email);
     }
@@ -108,22 +136,73 @@ class MySQLAuthCompatibility {
   }
 
   async getSession() {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user) {
+          const sbUser = data.session.user;
+          const user = {
+            id: sbUser.id,
+            email: sbUser.email || '',
+            full_name: sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || '',
+            phone: sbUser.phone || sbUser.user_metadata?.phone || '',
+            avatar_url: sbUser.user_metadata?.avatar_url || '',
+            role: sbUser.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer'
+          };
+          this.saveLocalSession(user);
+          return { data: { session: this.getLocalSession() }, error: null };
+        }
+      } catch (e) {
+        console.warn('Supabase getSession fallback:', e);
+      }
+    }
+
     try {
       const res = await fetch('/api/auth/session');
-      if (!res.ok) throw new Error('Failed to fetch session');
-      const data = await res.json();
-      if (data.session) {
-        this.saveLocalSession(data.session.user);
-        return { data: { session: data.session }, error: null };
+      if (res.ok) {
+        const data = await res.json();
+        if (data.session) {
+          this.saveLocalSession(data.session.user);
+          return { data: { session: data.session }, error: null };
+        }
       }
-    } catch (e) {
-      // fallback to local
-    }
+    } catch (e) {}
+
     const local = this.getLocalSession();
     return { data: { session: local }, error: null };
   }
 
   async signInWithPassword({ email, password }: any) {
+    const supabase = getSupabaseClient();
+
+    // 1. Try Supabase Auth first
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (!error && data?.user) {
+          const sbUser = data.user;
+          const formattedUser = {
+            id: sbUser.id,
+            email: sbUser.email || email,
+            full_name: sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || 'Customer',
+            phone: sbUser.phone || sbUser.user_metadata?.phone || '',
+            avatar_url: sbUser.user_metadata?.avatar_url || '',
+            role: sbUser.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer'
+          };
+          this.saveLocalSession(formattedUser);
+          const session = this.getLocalSession();
+          this.triggerListeners('SIGNED_IN', session);
+          return { data: { user: formattedUser, session: data.session }, error: null };
+        } else if (error) {
+          console.warn('Supabase Auth sign in attempt notice:', error.message);
+        }
+      } catch (err: any) {
+        console.warn('Supabase Auth exception:', err);
+      }
+    }
+
+    // 2. Fallback to API endpoint (/api/auth/login)
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -144,28 +223,104 @@ class MySQLAuthCompatibility {
   }
 
   async signUp({ email, password, options }: any) {
+    const fullName = options?.data?.full_name || options?.data?.name || '';
+    const phone = options?.data?.phone || '';
+    const supabase = getSupabaseClient();
+
+    let supabaseUser: any = null;
+    let supabaseSession: any = null;
+    let supabaseError: any = null;
+
+    // 1. Try Supabase Auth signUp
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              phone: phone
+            }
+          }
+        });
+        if (error) {
+          supabaseError = error;
+        } else if (data) {
+          supabaseUser = data.user;
+          supabaseSession = data.session;
+        }
+      } catch (err: any) {
+        supabaseError = err;
+      }
+    }
+
+    // Sync user record into database users table
     try {
-      const fullName = options?.data?.full_name || options?.data?.name || '';
-      const phone = options?.data?.phone || '';
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, fullName, phone })
       });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        return { data: { user: null }, error: new Error(data.error || 'Registration failed') };
+      const regData = await res.json();
+
+      if (!res.ok && !supabaseUser) {
+        return { data: { user: null }, error: new Error(regData.error || supabaseError?.message || 'Registration failed') };
       }
-      this.saveLocalSession(data.user);
-      const session = this.getLocalSession();
-      this.triggerListeners('SIGNED_IN', session);
-      return { data: { user: session?.user }, error: null };
+
+      const userToSave = supabaseUser ? {
+        id: supabaseUser.id,
+        email: supabaseUser.email || email,
+        full_name: fullName || 'Customer',
+        phone: phone || '',
+        avatar_url: '',
+        role: 'customer'
+      } : regData.user;
+
+      if (userToSave) {
+        this.saveLocalSession(userToSave);
+        const session = this.getLocalSession();
+        this.triggerListeners('SIGNED_IN', session);
+        return { 
+          data: { 
+            user: userToSave, 
+            session: supabaseSession || session 
+          }, 
+          error: null 
+        };
+      }
     } catch (err: any) {
-      return { data: { user: null }, error: err };
+      if (supabaseUser) {
+        const userToSave = {
+          id: supabaseUser.id,
+          email: supabaseUser.email || email,
+          full_name: fullName || 'Customer',
+          phone: phone || '',
+          avatar_url: '',
+          role: 'customer'
+        };
+        this.saveLocalSession(userToSave);
+        const session = this.getLocalSession();
+        this.triggerListeners('SIGNED_IN', session);
+        return { data: { user: userToSave, session: supabaseSession }, error: null };
+      }
+      return { data: { user: null }, error: supabaseError || err };
     }
+
+    if (supabaseError) {
+      return { data: { user: null }, error: supabaseError };
+    }
+
+    return { data: { user: null }, error: new Error('Registration failed') };
   }
 
   async signOut() {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
+    }
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {}
@@ -175,7 +330,14 @@ class MySQLAuthCompatibility {
   }
 
   async resetPasswordForEmail(email: string, options: any = {}) {
-    // Custom mock password reset via API
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, options);
+        if (!error) return { error: null };
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
@@ -192,12 +354,20 @@ class MySQLAuthCompatibility {
     }
   }
 
-  async signInWithOtp({ email, options }: any) {
+  async signInWithOtp({ phone, email }: any) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.signInWithOtp({ phone, email });
+        if (!error) return { error: null };
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch('/api/auth/otp-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, phone })
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -209,12 +379,34 @@ class MySQLAuthCompatibility {
     }
   }
 
-  async verifyOtp({ email, token, type }: any) {
+  async verifyOtp({ phone, email, token, type }: any) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({ phone, email, token, type: type || 'sms' });
+        if (!error && data?.user) {
+          const sbUser = data.user;
+          const formattedUser = {
+            id: sbUser.id,
+            email: sbUser.email || email || '',
+            full_name: sbUser.user_metadata?.full_name || 'Customer',
+            phone: sbUser.phone || phone || '',
+            avatar_url: '',
+            role: 'customer'
+          };
+          this.saveLocalSession(formattedUser);
+          const session = this.getLocalSession();
+          this.triggerListeners('SIGNED_IN', session);
+          return { data: { user: formattedUser, session: data.session }, error: null };
+        }
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch('/api/auth/otp-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, token })
+        body: JSON.stringify({ email, phone, token })
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -230,8 +422,14 @@ class MySQLAuthCompatibility {
   }
 
   async signInWithOAuth({ provider, options }: any) {
-    console.warn('OAuth is simulated in preview for provider:', provider);
-    // Simulate google/facebook sign in by redirecting to account tab with mock session
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithOAuth({ provider, options });
+        if (!error) return { data, error: null };
+      } catch (e) {}
+    }
+
     setTimeout(() => {
       window.location.href = options?.redirectTo || window.location.origin + '/account';
     }, 500);
@@ -239,6 +437,14 @@ class MySQLAuthCompatibility {
   }
 
   async updateUser({ password }: any) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (!error) return { error: null };
+      } catch (e) {}
+    }
+
     try {
       const loggedInCustomer = localStorage.getItem('loggedInCustomer');
       const email = loggedInCustomer ? JSON.parse(loggedInCustomer).email : null;
@@ -260,14 +466,14 @@ class MySQLAuthCompatibility {
   }
 }
 
-// Instantiate mock compatibility client
+// Instantiate compatibility client
 export const authClient = {
-  auth: new MySQLAuthCompatibility()
+  auth: new SupabaseAuthCompatibility()
 } as unknown as AuthClient;
 
 export function getAuthClient() { return authClient; }
 
 export function checkAuthConnection(): boolean {
-  // Always true for backward compatibility so frontend knows Auth is active
   return true;
 }
+
