@@ -6,8 +6,8 @@ import { Product, Banner } from '../types';
 import ProductCard from '../components/ProductCard';
 import BottomNav from '../components/BottomNav';
 import { useCart } from '../context/CartContext';
-import { motion, AnimatePresence } from 'framer-motion';
 
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { getCachedProducts, fetchProductsAndCache, getCachedBanners, fetchBannersAndCache } from '../utils/productCache';
 
 export default function OffersPage() {

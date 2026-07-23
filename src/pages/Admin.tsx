@@ -11,9 +11,10 @@ import {
   BarChart3, Sliders, HelpCircle, Activity, Share2, Settings, 
   MessageCircle, Trash2, CheckCircle2, ChevronRight, PlusCircle, 
   Copy, ArrowUp, ArrowDown, Plus, Wallet, Banknote, ImagePlus, Upload, 
-  Info, Search, Eye, Printer, ShieldAlert, BadgeInfo, Save, X, RefreshCw, Star, Check, Menu, LogOut, ClipboardX, Database, ExternalLink
+  Info, Search, Eye, Printer, ShieldAlert, BadgeInfo, Save, X, RefreshCw, Star, Check, Menu, LogOut, ClipboardX, Database, ExternalLink,
+  Server, Globe, AlertCircle
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { Product, Review, Banner, Category } from '../types';
 import { CATEGORIES } from '../data';
 import BottomNav from '../components/BottomNav';
@@ -25,6 +26,7 @@ import AdminIncompleteOrders from '../components/AdminIncompleteOrders';
 import DatabaseWizard from '../components/DatabaseWizard';
 import LogoutModal from '../components/LogoutModal';
 import CustomersPage from './Customers';
+import DatabaseSetup from './Admin/DatabaseSetup';
 import { useCompany } from '../context/CompanyContext';
 import { authClient } from '../lib/auth';
 
@@ -64,6 +66,7 @@ export default function AdminPage() {
 
   // Core loaded dataset states
   const [products, setProducts] = useState<Product[]>([]);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
   const [showDatabaseWizard, setShowDatabaseWizard] = useState(false);
   const [wizardAction, setWizardAction] = useState<string>('');
   const [categoryValidationError, setCategoryValidationError] = useState<any>(null);
@@ -82,15 +85,12 @@ export default function AdminPage() {
   const [newFaqQuestion, setNewFaqQuestion] = useState("");
   const [newFaqAnswer, setNewFaqAnswer] = useState("");
 
-  // Hostinger MySQL Config States
-  const [mysqlHost, setMysqlHost] = useState('');
-  const [mysqlPort, setMysqlPort] = useState('3306');
-  const [mysqlDatabase, setMysqlDatabase] = useState('');
-  const [mysqlUser, setMysqlUser] = useState('');
-  const [mysqlPassword, setMysqlPassword] = useState('');
-  const [mysqlConnectionOk, setMysqlConnectionOk] = useState(false);
-  const [mysqlError, setMysqlError] = useState('');
-  const [isTestingMysql, setIsTestingMysql] = useState(false);
+  // Supabase Config States
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseKey, setSupabaseKey] = useState('');
+  const [supabaseConnectionOk, setSupabaseConnectionOk] = useState(false);
+  const [supabaseError, setSupabaseError] = useState('');
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false);
 
   // Active submenu tabs for products/orders
   const [productTab, setProductTab] = useState<'list' | 'add' | 'stock' | 'views' | 'sizes' | 'bulk'>('list');
@@ -241,20 +241,26 @@ export default function AdminPage() {
     return initial;
   });
 
-  const loadMySQLConfig = () => {
-    fetch('/api/db/config')
+  useEffect(() => {
+    fetch('/api/supabase/diagnostics')
+      .then(r => r.json())
+      .then(data => {
+        setSupabaseConnectionOk(!!data.connected);
+      })
+      .catch(console.error);
+  }, []);
+
+  const loadSupabaseConfig = () => {
+    fetch('/api/supabase/diagnostics')
       .then(res => res.json())
       .then(data => {
-        if (data) {
-          setMysqlHost(data.host || '');
-          setMysqlPort(String(data.port || '3306'));
-          setMysqlDatabase(data.database || '');
-          setMysqlUser(data.user || '');
-          setMysqlPassword(data.password || '');
-          setMysqlConnectionOk(!!data.connectionOk);
+        if (data && data.config) {
+          setSupabaseUrl(data.config.url || '');
+          setSupabaseKey(data.config.key || '');
+          setSupabaseConnectionOk(!!data.connected);
         }
       })
-      .catch(err => console.error("Error loading MySQL config:", err));
+      .catch(err => console.error("Error loading Supabase config:", err));
   };
 
   useEffect(() => {
@@ -269,41 +275,38 @@ export default function AdminPage() {
         })
         .catch(console.error);
     } else if (activeSubpage === 'db-planner') {
-      loadMySQLConfig();
+      loadSupabaseConfig();
     }
   }, [activeSubpage]);
 
-  const handleSaveMySQLConfig = async (e: React.FormEvent) => {
+  const handleSaveSupabaseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsTestingMysql(true);
-    setMysqlError('');
+    setIsTestingSupabase(true);
+    setSupabaseError('');
     try {
-      const res = await fetch('/api/db/config', {
+      const res = await fetch('/api/supabase/update-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: mysqlHost,
-          port: parseInt(mysqlPort, 10) || 3306,
-          database: mysqlDatabase,
-          user: mysqlUser,
-          password: mysqlPassword
+          url: supabaseUrl,
+          key: supabaseKey
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setMysqlConnectionOk(true);
-        showToast("🎉 Hostinger MySQL Database connected and synchronized successfully!");
+        setSupabaseConnectionOk(true);
+        showToast("🎉 Supabase Database connected and synchronized successfully!");
       } else {
-        setMysqlConnectionOk(false);
-        setMysqlError(data.error || "Failed to establish a database connection with these credentials.");
+        setSupabaseConnectionOk(false);
+        setSupabaseError(data.error || "Failed to establish a database connection with these credentials.");
         showToast("❌ Database connection failed.");
       }
     } catch (err: any) {
-      setMysqlConnectionOk(false);
-      setMysqlError(err.message || "A network error occurred during initialization.");
+      setSupabaseConnectionOk(false);
+      setSupabaseError(err.message || "A network error occurred during initialization.");
       showToast("❌ Connection error occurred.");
     } finally {
-      setIsTestingMysql(false);
+      setIsTestingSupabase(false);
     }
   };
 
@@ -2057,30 +2060,60 @@ export default function AdminPage() {
           /* ================= DASHBOARD MAIN GRID VIEW ================= */
           <div className="p-4 space-y-4">
             
-            {/* Database Connectivity Indicator */}
-            {!mysqlConnectionOk && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-center justify-between gap-3 shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                    <ShieldAlert size={18} />
+            {/* Database Connectivity & Diagnostics Panel */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${diagnostics?.serverConnected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                    <Database size={16} />
                   </div>
                   <div>
-                    <h5 className="text-[11px] font-black text-amber-900 uppercase tracking-tight">MySQL Database Not Connected</h5>
-                    <p className="text-[9px] text-amber-700 font-bold">Please configure your Hostinger MySQL details to enable full functionality.</p>
+                    <h5 className="text-[11px] font-black text-slate-900 uppercase tracking-tight">Database Diagnostics</h5>
+                    <p className="text-[9px] text-slate-500 font-bold">Real-time MySQL Infrastructure Status</p>
                   </div>
                 </div>
                 <button 
-                  onClick={() => navigate('/admin/db-planner')}
-                  className="px-3 py-1.5 bg-amber-600 text-white text-[9px] font-black rounded-lg border-none cursor-pointer hover:bg-amber-700 transition-all active:scale-95 whitespace-nowrap"
+                  onClick={() => setShowDatabaseWizard(true)}
+                  className="px-3 py-1.5 bg-slate-900 text-white text-[9px] font-black rounded-lg border-none cursor-pointer hover:bg-black transition-all active:scale-95 flex items-center gap-1.5"
                 >
-                  Setup Now
+                  <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
+                  Run Repair
                 </button>
-              </motion.div>
-            )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                  <Server size={14} className={diagnostics?.serverConnected ? 'text-emerald-500' : 'text-rose-500'} />
+                  <span className="text-[8px] font-black text-slate-400 uppercase mt-1">MySQL</span>
+                  <span className={`text-[9px] font-black ${diagnostics?.serverConnected ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {diagnostics?.serverConnected ? 'RUNNING' : 'STOPPED'}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                  <Globe size={14} className={diagnostics?.databaseExists ? 'text-emerald-500' : 'text-rose-500'} />
+                  <span className="text-[8px] font-black text-slate-400 uppercase mt-1">DB Found</span>
+                  <span className={`text-[9px] font-black ${diagnostics?.databaseExists ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {diagnostics?.databaseExists ? 'YES' : 'NO'}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                  <Database size={14} className={(diagnostics?.tablesCount || 0) > 0 ? 'text-emerald-500' : 'text-rose-500'} />
+                  <span className="text-[8px] font-black text-slate-400 uppercase mt-1">Tables</span>
+                  <span className={`text-[9px] font-black ${(diagnostics?.tablesCount || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {diagnostics?.tablesCount || 0} Found
+                  </span>
+                </div>
+              </div>
+
+              {diagnostics?.error && (
+                <div className="bg-rose-50 border border-rose-100 p-2 rounded-lg flex items-center gap-2">
+                  <ShieldAlert size={12} className="text-rose-500 shrink-0" />
+                  <p className="text-[9px] font-bold text-rose-700 leading-tight">
+                    {typeof diagnostics.error === 'string' && (diagnostics.error.includes('ECONNREFUSED') || diagnostics.error.includes('ENOTFOUND')) ? 'Hostinger MySQL কানেক্ট করা যাচ্ছে না। দয়া করে Host-এ "sqlXXX.hostinger.com" এর পরিবর্তে Hostinger Server IP ব্যবহার করুন এবং Remote MySQL চালু করুন।' : String(diagnostics.error)}
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Realtime KPI banner */}
             <div className="border-b border-slate-100 p-4 grid grid-cols-3 gap-2 text-center">
@@ -3147,7 +3180,7 @@ export default function AdminPage() {
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-500">Database Issue</span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-500">Supabase Database Issue</span>
                                 <button 
                                   onClick={() => setCategoryValidationError(null)}
                                   className="text-slate-500 hover:text-white cursor-pointer bg-transparent border-none"
@@ -3155,21 +3188,44 @@ export default function AdminPage() {
                                   <X size={14} />
                                 </button>
                               </div>
-                              <p className="text-[12px] font-bold text-slate-100 leading-relaxed mb-3">
-                                {categoryValidationError.message}
+                              <p className="text-[12px] font-bold text-slate-100 leading-relaxed mb-2">
+                                {categoryValidationError.message || categoryValidationError.error}
                               </p>
+
+                              {categoryValidationError.sqlFix && (
+                                <div className="mb-3 p-2 bg-slate-950 border border-slate-800 rounded-lg">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[9px] font-bold text-amber-400">Run this SQL in Supabase SQL Editor:</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(categoryValidationError.sqlFix);
+                                        showToast("📋 SQL Command Copied!");
+                                      }}
+                                      className="text-[9px] text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded cursor-pointer border-none flex items-center gap-1"
+                                    >
+                                      <Copy size={10} />
+                                      <span>Copy SQL</span>
+                                    </button>
+                                  </div>
+                                  <code className="text-[10px] text-emerald-400 font-mono block overflow-x-auto p-1 bg-black/40 rounded">
+                                    {categoryValidationError.sqlFix}
+                                  </code>
+                                </div>
+                              )}
                               
                               <div className="flex flex-wrap items-center gap-2">
                                 <a 
-                                  href="https://auth-db2141.hstgr.io/index.php?route=/database/structure&db=u103041740_modeststylio" 
+                                  href="https://supabase.com/dashboard/project/mmughpeyyucoetqyrhhw/sql/new" 
                                   target="_blank" 
                                   rel="noreferrer"
-                                  className="bg-rose-500 hover:bg-rose-600 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1.5 transition-all no-underline shadow-sm"
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1.5 transition-all no-underline shadow-sm"
                                 >
                                   <ExternalLink size={11} />
-                                  <span>Fix in phpMyAdmin</span>
+                                  <span>Open Supabase SQL Editor</span>
                                 </a>
                                 <button 
+                                  type="button"
                                   onClick={() => {
                                     setCategoryValidationError(null);
                                     const saveBtn = document.querySelector('button[data-save-category="true"]') as HTMLButtonElement;
@@ -3178,7 +3234,7 @@ export default function AdminPage() {
                                   className="bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
                                 >
                                   <RefreshCw size={11} />
-                                  <span>Retry</span>
+                                  <span>Retry Save</span>
                                 </button>
                               </div>
                             </div>
@@ -3434,9 +3490,10 @@ export default function AdminPage() {
                                 body: JSON.stringify(categoryPayload)
                               });
                               if (res.ok) {
-                                showToast(`✓ Category Saved Successfully`);
+                                showToast(`✓ Category Saved Successfully to Database`);
                                 setEditingCategory(null);
                                 setIsCreatingCategory(false);
+                                setCategoryValidationError(null);
                                 // Reset fields
                                 setCatFormName('');
                                 setCatFormImage('');
@@ -3446,15 +3503,17 @@ export default function AdminPage() {
                                 forceSyncDatabase();
                               } else {
                                 const err = await res.json();
-                                showToast(`Error: ${err.error || 'Failed to save'}`);
+                                setCategoryValidationError(err);
+                                showToast(`❌ ডাটাবেজে সেভ হয়নি: ${err.message || err.error || 'Failed to save'}`);
                               }
-                            } catch (err) {
+                            } catch (err: any) {
                               console.error(err);
                               showToast("An error occurred during category save.");
                             } finally {
                               setIsLoading(false);
                             }
                           }}
+                          data-save-category="true"
                           className={`flex-1 py-2.5 text-xs font-black text-white ${isLoading ? 'bg-slate-400' : 'bg-[#ff2f7d] hover:bg-[#e0246a]'} border-none rounded-lg cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-pink-500/10 flex items-center justify-center`}
                         >
                           {isLoading ? <RefreshCw size={14} className="animate-spin mr-2" /> : null}
@@ -5241,13 +5300,7 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <DatabaseWizard 
-                    targetAction="Database Health Check & Config" 
-                    onComplete={() => {
-                      showToast("✅ Database synchronized successfully!");
-                      setActiveSubpage(null);
-                    }} 
-                  />
+                  <DatabaseSetup />
                 </div>
               )}
 

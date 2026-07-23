@@ -6,7 +6,7 @@ import {
   DollarSign, ShoppingBag, Star, MessageCircle, FileText, CheckCircle, 
   Clock, AlertTriangle, Trash2, Ban, Check, Send, MonitorSmartphone, Package
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 
 // Highly realistic mock orders for demo customers
 const mockOrders = {

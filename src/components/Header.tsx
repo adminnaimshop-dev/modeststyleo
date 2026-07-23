@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AnimatePresence, motion } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { Camera, Menu, Search, ShoppingCart } from 'lucide-react';
 import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';

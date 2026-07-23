@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { 
   User, ShieldAlert, PlusCircle, Trash2, CheckCircle, Eye, EyeOff, Tag, MessageCircle, 
   ShoppingBag, ArrowRight, Grid, Truck, Heart, RotateCcw, MapPin, Bell, Key, 

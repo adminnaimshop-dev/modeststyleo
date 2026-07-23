@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { LogOut, X } from 'lucide-react';
 
 interface LogoutModalProps {

@@ -11,7 +11,7 @@ import {
   Facebook, Twitter, Youtube, Mail, MapPin, 
   ChevronRight, ExternalLink, RefreshCw, Check
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import BottomNav from '../components/BottomNav';
 import { useCompany } from '../context/CompanyContext';
 import { MessengerMessage } from '../types';

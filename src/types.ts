@@ -64,6 +64,15 @@ export interface Product {
   hashtagKeywords?: string[];
   slug?: string;
   imageAlt?: string;
+
+  // MySQL specific fields
+  product_name?: string;
+  product_slug?: string;
+  regular_price?: number;
+  sale_price?: number;
+  stock_qty?: number;
+  brand_name?: string;
+
   facebookTitle?: string;
   facebookDescription?: string;
   facebookImageAlt?: string;

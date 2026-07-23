@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGoBack } from '../utils/navigation';
 import { ChevronLeft, ShoppingBag, Trash2, Plus, Minus, CheckCircle, Smartphone, Info, Copy, CreditCard } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { useCart } from '../context/CartContext';
 import { useCompany } from '../context/CompanyContext';
 import { updateSessionTracker, trackEvent } from '../utils/sessionTracker';

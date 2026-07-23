@@ -11,7 +11,7 @@ import {
   Shield, Clock, Bell, MapPin, Key, Download, Lock, ChevronRight, 
   Phone, FileText, LogOut
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from '../lib/safe-motion';
 import { useCompany } from '../context/CompanyContext';
 
 interface CustomerSideMenuProps {

@@ -967,9 +967,10 @@ CREATE TABLE IF NOT EXISTS products (
         body: JSON.stringify({
           tableName: "products",
           columns: [
-            "id", "name", "price", "old_price", "discount_price", "category", 
-            "category_id", "sku", "stock", "status", "fabric", "gsm", "fit", 
-            "care", "short_description", "full_description", "is_flash_sale", "created_at"
+            "id", "product_name", "product_slug", "name", "price", "regular_price", "sale_price", 
+            "old_price", "discount_price", "category_id", "brand", "sku", "stock_qty", "stock", 
+            "status", "fabric", "gsm", "fit", "care", "short_description", "full_description", 
+            "is_flash_sale", "created_at"
           ]
         })
       });
@@ -1077,6 +1078,14 @@ CREATE TABLE IF NOT EXISTS products (
       relatedKeywords: form.relatedKeywords,
       variants,
 
+      // MySQL specific requested columns
+      product_name: form.name,
+      product_slug: form.slug,
+      regular_price: Number(form.price) || 0,
+      sale_price: form.discountPrice ? Number(form.discountPrice) : Number(form.price),
+      stock_qty: Number(form.stock) || 0,
+      brand_name: form.brand,
+
       image: selectedImage,
       images: productImages,
 
@@ -1151,26 +1160,25 @@ CREATE TABLE IF NOT EXISTS products (
         err?.reason === 'missing_columns' || 
         (err?.message && (
           err.message.toLowerCase().includes('database') || 
-          err.message.toLowerCase().includes('mysql') || 
-          err.message.toLowerCase().includes('connection refused') ||
-          err.message.toLowerCase().includes('access denied')
+          err.message.toLowerCase().includes('supabase') || 
+          err.message.toLowerCase().includes('connection')
         ));
 
       if (isDbError) {
         setValidationError({
-          errorType: err?.reason === 'table_missing' ? 'table_missing' : 'column_missing',
-          message: err?.message || "ডাটাবেজ কানেকশন বা টেবিল কলামে সমস্যা সনাক্ত হয়েছে।"
+          errorType: 'table_missing',
+          message: err?.message || "Database connection issue detected."
         });
-        setErrorMessage(err?.message || "ডাটাবেজ কানেকশন বা টেবিল কলামে সমস্যা সনাক্ত হয়েছে।");
+        setErrorMessage(err?.message || "Database connection issue detected.");
         setToast({
           type: 'error',
-          title: '❌ ডাটাবেজ সমস্যা',
-          message: err?.message || 'ডাটাবেজ কলাম বা টেবিল অনুপস্থিত।'
+          title: '❌ Database Issue',
+          message: err?.message || 'Database connection error.'
         });
       } else {
         setToast({
           type: 'error',
-          title: '❌ সেভ করা যায়নি',
+          title: '❌ Save Failed',
           message: err?.message || 'Unexpected error occurred.'
         });
         setErrorMessage(err?.message || "❌ Error saving changes. Try again.");
@@ -1180,56 +1188,12 @@ CREATE TABLE IF NOT EXISTS products (
     }
   };
 
-  const [isDbFixing, setIsDbFixing] = useState(false);
-
-  const handleDbAutoRepair = async () => {
-    setIsDbFixing(true);
-    setToast({
-      type: 'checking',
-      title: '⚙️ ডাটাবেজ সংস্কার হচ্ছে...',
-      message: 'প্রয়োজনীয় টেবিল এবং কলামগুলো স্বয়ংক্রিয়ভাবে তৈরি করা হচ্ছে।'
-    });
-    setErrorMessage("ডাটাবেজ সংস্কার ও প্রয়োজনীয় কলাম তৈরি করা হচ্ছে...");
-    try {
-      const res = await fetch('/api/mysql/auto-repair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToast({
-          type: 'success',
-          title: '✅ সংস্কার সম্পন্ন',
-          message: 'ডাটাবেজ এবং কলামগুলো সফলভাবে প্রস্তুত করা হয়েছে।'
-        });
-        setErrorMessage("✓ ডাটাবেজ এবং প্রয়োজনীয় সকল কলাম সফলভাবে তৈরি/সংস্কার করা হয়েছে! এখন আপনি প্রোডাক্টটি পুনরায় সেভ করতে পারবেন।");
-        setValidationError(null); // Clear validation error to allow saving
-      } else {
-        setToast({
-          type: 'error',
-          title: '❌ সংস্কার ব্যর্থ',
-          message: data.error || 'সংস্কার করতে সমস্যা হয়েছে।'
-        });
-        setErrorMessage(`সংস্কার ব্যর্থ হয়েছে: ${data.error || 'Unknown error'}`);
-      }
-    } catch (e: any) {
-      setToast({
-        type: 'error',
-        title: '❌ নেটওয়ার্ক ত্রুটি',
-        message: 'সার্ভারের সাথে সংযোগ স্থাপন করা যায়নি।'
-      });
-      setErrorMessage("ডাটাবেজ সংস্কারের সময় নেটওয়ার্ক ত্রুটি ঘটেছে।");
-    } finally {
-      setIsDbFixing(false);
-    }
-  };
-
   // Core copy/clone logic
   const handleCopyProduct = async () => {
     setIsCloning(true);
     try {
       await onClone(product);
-      setErrorMessage("✨ Product duplicated & refreshed successfully!");
+      setToast({ type: 'success', title: 'Product Cloned', message: 'Product cloned successfully!' });
     } catch (err) {
       setErrorMessage("❌ Failed to clone product.");
     } finally {
@@ -1239,7 +1203,7 @@ CREATE TABLE IF NOT EXISTS products (
 
   // Delete product logic with extra verification
   const handleDeleteProduct = async () => {
-    const typedConfirm = window.confirm(`⚠️ CRITICAL CONTEXT: Are you absolutely sure you want to delete "${product.name}"? This action cannot be undone.`);
+    const typedConfirm = window.confirm(`⚠️ Are you sure you want to delete "${product.name}"?`);
     if (!typedConfirm) return;
     
     setIsDeleting(true);
@@ -1254,7 +1218,7 @@ CREATE TABLE IF NOT EXISTS products (
   return (
     <div id="admin-product-edit-form" className="space-y-6 pointer-events-auto relative">
       
-      {/* VALIDATION ALERT BANNER */}
+      {/* ACTION BUTTONS */}
       {product.id !== 'new' && (
         <div className="flex items-center justify-end gap-2 mb-2">
           <button 
@@ -1276,72 +1240,56 @@ CREATE TABLE IF NOT EXISTS products (
           </button>
         </div>
       )}
-        {/* ERROR FEEDBACK / NOTIFIER */}
-        {errorMessage && (
-          <div className="bg-slate-900 border-l-4 border-rose-500 text-white rounded-2xl p-5 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500 mb-8 pointer-events-auto">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center shrink-0 border border-rose-500/20">
-                <AlertCircle className="text-rose-500" size={20} />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500 mb-1">ত্রুটি (Error Status)</h4>
-                <p className="text-[13px] font-bold text-slate-100 leading-relaxed">
-                  {errorMessage}
-                </p>
-                
-                {validationError && (
-                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
-                    {(validationError.errorType === 'table_missing' || validationError.errorType === 'column_missing') && (
-                      <button 
-                        onClick={handleDbAutoRepair}
-                        disabled={isDbFixing}
-                        className="bg-[#ff2f7d] hover:bg-[#e0246a] disabled:bg-rose-800 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-md active:scale-95"
-                      >
-                        {isDbFixing ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <Zap size={13} />
-                        )}
-                        <span>{isDbFixing ? "সংস্কার করা হচ্ছে..." : "ডাটাবেজ ঠিক করুন (Auto Repair)"}</span>
-                      </button>
-                    )}
-                    
-                    <a 
-                      href="https://auth-db2141.hstgr.io/index.php?route=/database/structure&db=u103041740_modeststylio" 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="bg-slate-800 hover:bg-slate-755 text-slate-300 text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border border-slate-700/60 cursor-pointer flex items-center gap-1.5 transition-all no-underline shadow-sm"
-                    >
-                      <ExternalLink size={12} />
-                      <span>Open phpMyAdmin</span>
-                    </a>
-                    
-                    <button 
-                      onClick={() => {
-                        setErrorMessage("");
-                        setValidationError(null);
-                        saveProductData();
-                      }}
-                      className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer flex items-center gap-1.5 transition-all"
-                    >
-                      <RefreshCw size={12} />
-                      <span>Retry</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button 
-                onClick={() => {
-                  setErrorMessage("");
-                  setValidationError(null);
-                }}
-                className="text-slate-500 hover:text-white bg-transparent border-none cursor-pointer p-1"
-              >
-                <X size={16} />
-              </button>
+
+      {/* ERROR FEEDBACK / NOTIFIER */}
+      {errorMessage && (
+        <div className="bg-slate-900 border-l-4 border-rose-500 text-white rounded-2xl p-5 shadow-2xl mb-8 pointer-events-auto">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center shrink-0 border border-rose-500/20">
+              <AlertCircle className="text-rose-500" size={20} />
             </div>
+            <div className="flex-1">
+              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500 mb-1">Status Notification</h4>
+              <p className="text-[13px] font-bold text-slate-100 leading-relaxed">
+                {errorMessage}
+              </p>
+              
+              <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                <button 
+                  onClick={() => {
+                    setErrorMessage("");
+                    setValidationError(null);
+                    saveProductData();
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+                >
+                  <RefreshCw size={12} />
+                  <span>Retry Save</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setErrorMessage("");
+                    setValidationError(null);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                setErrorMessage("");
+                setValidationError(null);
+              }}
+              className="text-slate-500 hover:text-white bg-transparent border-none cursor-pointer p-1"
+            >
+              <X size={16} />
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
         {/* 2. STATS SECTION */}
         {product.id !== 'new' && (
