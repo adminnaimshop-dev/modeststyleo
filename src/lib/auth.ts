@@ -3,6 +3,22 @@ import { getSupabaseClient } from './supabase';
 
 export type AuthClient = any;
 
+// Helper to safely parse JSON responses and avoid "Unexpected token '<', <!DOCTYPE..." errors
+async function safeParseJsonResponse(res: Response) {
+  const contentType = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (!contentType.includes('application/json') && text.trim().toLowerCase().startsWith('<!doctype')) {
+    throw new Error("Server returned HTML page instead of JSON API response. Please verify API URL configuration.");
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    throw new Error("Failed to parse server response as JSON.");
+  }
+}
+
 // Storage helper
 const SESSION_KEY = 'mysql_user_session';
 
@@ -161,7 +177,7 @@ class SupabaseAuthCompatibility {
     try {
       const res = await fetch('/api/auth/session');
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (data.session) {
           this.saveLocalSession(data.session.user);
           return { data: { session: data.session }, error: null };
@@ -209,7 +225,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res);
       if (!res.ok || data.error) {
         return { data: { user: null }, error: new Error(data.error || 'Authentication failed') };
       }
@@ -262,7 +278,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, fullName, phone })
       });
-      const regData = await res.json();
+      const regData = await safeParseJsonResponse(res);
 
       if (!res.ok && !supabaseUser) {
         return { data: { user: null }, error: new Error(regData.error || supabaseError?.message || 'Registration failed') };
@@ -314,6 +330,23 @@ class SupabaseAuthCompatibility {
     return { data: { user: null }, error: new Error('Registration failed') };
   }
 
+  async requestSupervisorAuthorization({ email, supervisorEmail, reason, name, phone }: any) {
+    try {
+      const res = await fetch('/api/auth/supervisor-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, supervisorEmail, reason, name, phone })
+      });
+      const data = await safeParseJsonResponse(res);
+      if (!res.ok || data.error) {
+        return { error: new Error(data.error || 'Failed to send supervisor authorization email request') };
+      }
+      return { data, error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
+  }
+
   async signOut() {
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -344,7 +377,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res);
       if (!res.ok || data.error) {
         return { error: new Error(data.error || 'Reset password request failed') };
       }
@@ -369,7 +402,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, phone })
       });
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res);
       if (!res.ok || data.error) {
         return { error: new Error(data.error || 'OTP send failed') };
       }
@@ -408,7 +441,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, phone, token })
       });
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res);
       if (!res.ok || data.error) {
         return { data: { user: null }, error: new Error(data.error || 'OTP verification failed') };
       }
@@ -455,7 +488,7 @@ class SupabaseAuthCompatibility {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      const data = await res.json();
+      const data = await safeParseJsonResponse(res);
       if (!res.ok || data.error) {
         return { error: new Error(data.error || 'Update password failed') };
       }

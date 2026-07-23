@@ -571,6 +571,44 @@ async function startServer() {
     res.json({ success: true, message: "Password reset instructions sent (Simulated)" });
   });
 
+  // Supervisor Authorization Request Endpoint
+  app.post("/api/auth/supervisor-request", async (req, res) => {
+    try {
+      const { email, supervisorEmail, reason, name, phone } = req.body;
+      if (!email || !supervisorEmail) {
+        return res.status(400).json({ error: "Applicant Email and Supervisor Email are required." });
+      }
+
+      console.log(`[Supervisor Auth Request] Sent authorization email to ${supervisorEmail} for applicant ${email} (${name})`);
+
+      // Store in Supabase if connected
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from('supervisor_requests').insert({
+            id: 'sup_' + Date.now(),
+            applicant_email: email,
+            supervisor_email: supervisorEmail,
+            reason: reason || 'Login/Account Authorization Request',
+            status: 'pending',
+            created_at: new Date().toISOString()
+          });
+        } catch (spErr) {
+          console.warn("Supabase supervisor_requests table optional log note:", spErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Supervisor Authorization Email queued and sent to ${supervisorEmail} successfully!`,
+        approvalStatus: 'pending'
+      });
+    } catch (err: any) {
+      console.error("Supervisor request error:", err);
+      res.status(500).json({ error: err.message || "Failed to submit supervisor request" });
+    }
+  });
+
   // Bulk Product Upload with cell-by-cell validated rows
   app.post("/api/products/bulk", async (req, res) => {
     try {

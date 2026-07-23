@@ -72,6 +72,37 @@ export default function Account() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
+  // Supervisor Authorization States
+  const [showSupervisorModal, setShowSupervisorModal] = useState(false);
+  const [supervisorEmail, setSupervisorEmail] = useState('');
+  const [supervisorReason, setSupervisorReason] = useState('');
+  const [supervisorLoading, setSupervisorLoading] = useState(false);
+  const [supervisorMsg, setSupervisorMsg] = useState<string | null>(null);
+
+  const handleRequestSupervisorAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmail || !supervisorEmail) {
+      alert("Please enter both your Email and Supervisor Email.");
+      return;
+    }
+    setSupervisorLoading(true);
+    setSupervisorMsg(null);
+    try {
+      const { data, error } = await authClient.auth.requestSupervisorAuthorization({
+        email: loginEmail,
+        supervisorEmail: supervisorEmail,
+        reason: supervisorReason || 'Login and Account Authorization Request',
+        name: regName || 'User'
+      });
+      if (error) throw error;
+      setSupervisorMsg(data?.message || "✅ Supervisor Authorization Email request sent successfully!");
+    } catch (err: any) {
+      alert("Error sending supervisor request: " + err.message);
+    } finally {
+      setSupervisorLoading(false);
+    }
+  };
+
   // Form State for Adding Product
   const [prodName, setProdName] = useState('');
   const [prodCategory, setProdCategory] = useState('Saree');
@@ -709,7 +740,10 @@ export default function Account() {
                   {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between pt-1">
+                <button type="button" onClick={() => setShowSupervisorModal(true)} className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 transition-colors bg-transparent border-none cursor-pointer outline-none tracking-widest flex items-center gap-1">
+                  <span>📩 Supervisor Auth Request</span>
+                </button>
                 <button type="button" onClick={handleForgotPassword} className="text-[9px] font-black uppercase text-slate-400 hover:text-slate-900 transition-colors bg-transparent border-none cursor-pointer outline-none tracking-widest">Forgot Password?</button>
               </div>
               <button 
@@ -1308,6 +1342,97 @@ export default function Account() {
         onClose={() => setShowLogoutModal(false)} 
         onConfirm={confirmLogout} 
       />
+
+      {/* Supervisor Authorization Request Modal */}
+      {showSupervisorModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-100 relative">
+            <button 
+              onClick={() => setShowSupervisorModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-transparent border-none cursor-pointer p-1"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <Send size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">Supervisor Authorization Email</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Request email approval for account/login access</p>
+              </div>
+            </div>
+
+            {supervisorMsg ? (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-xs font-bold mb-4">
+                {supervisorMsg}
+                <button 
+                  onClick={() => { setShowSupervisorModal(false); setSupervisorMsg(null); }}
+                  className="mt-3 w-full py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider border-none cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleRequestSupervisorAuth} className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Your Email Address</label>
+                  <input 
+                    type="email" 
+                    required 
+                    placeholder="e.g. user@example.com" 
+                    value={loginEmail} 
+                    onChange={e => setLoginEmail(e.target.value)} 
+                    className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Supervisor Email Address *</label>
+                  <input 
+                    type="email" 
+                    required 
+                    placeholder="e.g. supervisor@company.com" 
+                    value={supervisorEmail} 
+                    onChange={e => setSupervisorEmail(e.target.value)} 
+                    className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg px-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Reason for Authorization Request</label>
+                  <textarea 
+                    rows={3} 
+                    placeholder="Explain why authorization is needed..." 
+                    value={supervisorReason} 
+                    onChange={e => setSupervisorReason(e.target.value)} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-600 resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowSupervisorModal(false)}
+                    className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-lg border-none cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={supervisorLoading}
+                    className="flex-1 h-10 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider rounded-lg border-none cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {supervisorLoading ? <RefreshCw className="animate-spin" size={14} /> : <Send size={14} />}
+                    <span>Send Request</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
       {loading && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-[100] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
