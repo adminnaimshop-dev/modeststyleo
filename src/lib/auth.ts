@@ -97,6 +97,26 @@ class SupabaseAuthCompatibility {
     return null;
   }
 
+  private async syncProfileToSupabase(user: any) {
+    const client = getSupabaseClient();
+    if (!client || !user || !user.id || !user.email) return;
+    try {
+      const profileData = {
+        id: user.id,
+        email: user.email,
+        full_name: user.name || user.full_name || 'Customer',
+        avatar_url: user.photo || user.avatar_url || '',
+        phone: user.phone || '',
+        role: user.role || 'customer',
+        last_login_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      await client.from('profiles').upsert(profileData, { onConflict: 'id' });
+    } catch (err) {
+      console.warn('Profiles table sync note:', err);
+    }
+  }
+
   private saveLocalSession(user: any) {
     const role = user.role || (user.email === 'admin.naimshop@gmail.com' ? 'admin' : 'customer');
     const userData = {
@@ -114,6 +134,7 @@ class SupabaseAuthCompatibility {
       localStorage.setItem('adminAuth', 'true');
       localStorage.setItem('adminEmail', userData.email);
     }
+    this.syncProfileToSupabase(userData);
   }
 
   private clearLocalSession() {
@@ -456,17 +477,25 @@ class SupabaseAuthCompatibility {
 
   async signInWithOAuth({ provider, options }: any) {
     const supabase = getSupabaseClient();
+    const redirectTo = options?.redirectTo || (window.location.origin + '/account');
     if (supabase) {
       try {
-        const { data, error } = await supabase.auth.signInWithOAuth({ provider, options });
-        if (!error) return { data, error: null };
-      } catch (e) {}
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: provider || 'google',
+          options: {
+            redirectTo,
+            queryParams: options?.queryParams
+          }
+        });
+        if (error) {
+          return { data: null, error };
+        }
+        return { data, error: null };
+      } catch (e: any) {
+        return { data: null, error: e };
+      }
     }
-
-    setTimeout(() => {
-      window.location.href = options?.redirectTo || window.location.origin + '/account';
-    }, 500);
-    return { error: null };
+    return { data: null, error: new Error("Supabase client not initialized.") };
   }
 
   async updateUser({ password }: any) {

@@ -1638,6 +1638,11 @@ Output format: You MUST output a JSON object containing two fields:
     }
   });
 
+  // Return JSON 404 for any unhandled /api/* routes to prevent returning index.html
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route ${req.originalUrl} not found` });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -1,5 +1,17 @@
 // Centralized Supabase PostgreSQL table definitions
 export const SUPABASE_TABLE_DEFINITIONS: Record<string, string> = {
+  profiles: `CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT,
+    avatar_url TEXT,
+    phone TEXT,
+    role TEXT DEFAULT 'customer',
+    last_login_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );`,
+
   users: `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,

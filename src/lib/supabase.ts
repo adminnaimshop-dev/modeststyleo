@@ -14,10 +14,13 @@ export function getEnvVars(): SupabaseConfig {
   let key = '';
 
   // Check Vite client-side environment variables first
-  const meta = import.meta as unknown as { env?: Record<string, string> };
-  if (typeof meta !== 'undefined' && meta.env) {
-    url = meta.env.VITE_SUPABASE_URL || '';
-    key = meta.env.VITE_SUPABASE_ANON_KEY || meta.env.VITE_SUPABASE_KEY || '';
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      url = import.meta.env.VITE_SUPABASE_URL || '';
+      key = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
+    }
+  } catch (e) {
+    // Ignore meta environment access error if outside Vite context
   }
 
   // Fallback to Node process.env if available

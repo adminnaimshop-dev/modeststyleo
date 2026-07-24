@@ -53,6 +53,8 @@ export default function App() {
           <Route path="/offers" element={<Offers />} />
           <Route path="/messenger" element={<MessengerPage />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/login" element={<Account />} />
+          <Route path="/auth/callback" element={<Account />} />
           <Route path="/admin/*" element={<AdminPage />} />
           <Route path="/admin-login" element={<AdminLogin />} />
         </Routes>
