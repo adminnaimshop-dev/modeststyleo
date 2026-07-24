@@ -18,6 +18,27 @@ export function RouteTracker() {
     if (!location.pathname.startsWith('/product/')) {
       sessionStorage.setItem('lastCustomerPage', location.pathname + location.search);
     }
+
+    // Save scroll position before reload
+    const handleBeforeUnload = () => {
+      sessionStorage.setItem(`scroll_${location.pathname}`, window.scrollY.toString());
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Restore scroll position if saved for current path
+    const savedScroll = sessionStorage.getItem(`scroll_${location.pathname}`);
+    if (savedScroll) {
+      setTimeout(() => {
+        window.scrollTo({ top: parseInt(savedScroll, 10), behavior: 'instant' });
+      }, 50);
+    } else {
+      window.scrollTo(0, 0);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
   }, [location]);
 
   return null;

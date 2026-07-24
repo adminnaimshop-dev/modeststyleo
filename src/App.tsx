@@ -42,9 +42,11 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/product/:id" element={<ProductDetails />} />
           <Route path="/product/:id/reviews" element={<Reviews />} />
+          <Route path="/category" element={<Categories />} />
           <Route path="/category/:slug" element={<CategoryDetailsPage />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/orders" element={<Account />} />
           <Route path="/invoice/:id" element={<Invoice />} />
           <Route path="/flash-sale" element={<FlashSalePage />} />
           <Route path="/contact" element={<Placeholder title="Contact Us" mode="contact" />} />
