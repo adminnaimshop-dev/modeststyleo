@@ -9,13 +9,13 @@ async function safeParseJsonResponse(res: Response) {
   const text = await res.text();
 
   if (!contentType.includes('application/json') && text.trim().toLowerCase().startsWith('<!doctype')) {
-    throw new Error("Server returned HTML page instead of JSON API response. Please verify API URL configuration.");
+    throw new Error("Backend server API route unavailable or host returned HTML.");
   }
 
   try {
     return JSON.parse(text);
   } catch (err) {
-    throw new Error("Failed to parse server response as JSON.");
+    throw new Error("Invalid JSON response format from server.");
   }
 }
 
@@ -213,7 +213,7 @@ class SupabaseAuthCompatibility {
   async signInWithPassword({ email, password }: any) {
     const supabase = getSupabaseClient();
 
-    // 1. Try Supabase Auth first
+    // 1. Try Supabase Auth first if client initialized
     if (supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -232,14 +232,15 @@ class SupabaseAuthCompatibility {
           this.triggerListeners('SIGNED_IN', session);
           return { data: { user: formattedUser, session: data.session }, error: null };
         } else if (error) {
-          console.warn('Supabase Auth sign in attempt notice:', error.message);
+          // Return Supabase auth error directly to user (e.g., Invalid login credentials)
+          return { data: { user: null }, error: new Error(error.message || 'Invalid email or password.') };
         }
       } catch (err: any) {
         console.warn('Supabase Auth exception:', err);
       }
     }
 
-    // 2. Fallback to API endpoint (/api/auth/login)
+    // 2. Fallback to API endpoint (/api/auth/login) only if Supabase not configured
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -255,7 +256,10 @@ class SupabaseAuthCompatibility {
       this.triggerListeners('SIGNED_IN', session);
       return { data: { user: session?.user }, error: null };
     } catch (err: any) {
-      return { data: { user: null }, error: err };
+      return { 
+        data: { user: null }, 
+        error: new Error(err.message?.includes('HTML') ? 'Authentication server unavailable. Please check your Supabase credentials or environment variables.' : (err.message || 'Authentication failed')) 
+      };
     }
   }
 
@@ -264,11 +268,7 @@ class SupabaseAuthCompatibility {
     const phone = options?.data?.phone || '';
     const supabase = getSupabaseClient();
 
-    let supabaseUser: any = null;
-    let supabaseSession: any = null;
-    let supabaseError: any = null;
-
-    // 1. Try Supabase Auth signUp
+    // 1. Try Supabase Auth signUp if client initialized
     if (supabase) {
       try {
         const { data, error } = await supabase.auth.signUp({
@@ -282,17 +282,41 @@ class SupabaseAuthCompatibility {
           }
         });
         if (error) {
-          supabaseError = error;
-        } else if (data) {
-          supabaseUser = data.user;
-          supabaseSession = data.session;
+          return { data: { user: null }, error: new Error(error.message || 'Registration failed') };
+        } else if (data?.user) {
+          const userToSave = {
+            id: data.user.id,
+            email: data.user.email || email,
+            full_name: fullName || 'Customer',
+            phone: phone || '',
+            avatar_url: '',
+            role: 'customer'
+          };
+          this.saveLocalSession(userToSave);
+          const session = this.getLocalSession();
+          this.triggerListeners('SIGNED_IN', session);
+
+          // Silent background sync attempt
+          fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, fullName, phone })
+          }).catch(() => {});
+
+          return { 
+            data: { 
+              user: userToSave, 
+              session: data.session || session 
+            }, 
+            error: null 
+          };
         }
       } catch (err: any) {
-        supabaseError = err;
+        return { data: { user: null }, error: new Error(err.message || 'Registration failed') };
       }
     }
 
-    // Sync user record into database users table
+    // Fallback if Supabase not initialized
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -301,51 +325,21 @@ class SupabaseAuthCompatibility {
       });
       const regData = await safeParseJsonResponse(res);
 
-      if (!res.ok && !supabaseUser) {
-        return { data: { user: null }, error: new Error(regData.error || supabaseError?.message || 'Registration failed') };
+      if (!res.ok || regData.error) {
+        return { data: { user: null }, error: new Error(regData.error || 'Registration failed') };
       }
 
-      const userToSave = supabaseUser ? {
-        id: supabaseUser.id,
-        email: supabaseUser.email || email,
-        full_name: fullName || 'Customer',
-        phone: phone || '',
-        avatar_url: '',
-        role: 'customer'
-      } : regData.user;
-
-      if (userToSave) {
-        this.saveLocalSession(userToSave);
+      if (regData.user) {
+        this.saveLocalSession(regData.user);
         const session = this.getLocalSession();
         this.triggerListeners('SIGNED_IN', session);
-        return { 
-          data: { 
-            user: userToSave, 
-            session: supabaseSession || session 
-          }, 
-          error: null 
-        };
+        return { data: { user: regData.user, session }, error: null };
       }
     } catch (err: any) {
-      if (supabaseUser) {
-        const userToSave = {
-          id: supabaseUser.id,
-          email: supabaseUser.email || email,
-          full_name: fullName || 'Customer',
-          phone: phone || '',
-          avatar_url: '',
-          role: 'customer'
-        };
-        this.saveLocalSession(userToSave);
-        const session = this.getLocalSession();
-        this.triggerListeners('SIGNED_IN', session);
-        return { data: { user: userToSave, session: supabaseSession }, error: null };
-      }
-      return { data: { user: null }, error: supabaseError || err };
-    }
-
-    if (supabaseError) {
-      return { data: { user: null }, error: supabaseError };
+      return { 
+        data: { user: null }, 
+        error: new Error(err.message?.includes('HTML') ? 'Registration server unavailable. Please check your Supabase credentials or environment variables.' : (err.message || 'Registration failed')) 
+      };
     }
 
     return { data: { user: null }, error: new Error('Registration failed') };
