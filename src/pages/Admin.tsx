@@ -3451,26 +3451,28 @@ export default function AdminPage() {
                             try {
                               const slug = catFormName.trim().toLowerCase().replace(/\s+/g, "-");
 
-                              // Deep Database Validation for Categories
-                              const valRes = await fetch("/api/db/validate-save", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  tableName: "categories",
-                                  columns: [
-                                    "id", "name", "image", "icon_image", "short_title", 
-                                    "main_banner", "section_banner", "status", 
-                                    "serial_number", "last_edited", "slug", "updated_at"
-                                  ]
-                                })
-                              });
-                              const valData = await valRes.json();
-                              
-                              if (!valData.valid) {
-                                setCategoryValidationError(valData);
-                                showToast(`❌ ডাটাবেজ সমস্যা: ${valData.message}`);
-                                setIsLoading(false);
-                                return;
+                              // Optional non-blocking pre-validation check
+                              try {
+                                const valRes = await fetch("/api/db/validate-save", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    tableName: "categories",
+                                    columns: [
+                                      "id", "name", "image", "icon_image", "short_title", 
+                                      "main_banner", "section_banner", "status", 
+                                      "serial_number", "last_edited", "slug", "updated_at"
+                                    ]
+                                  })
+                                });
+                                if (valRes.ok) {
+                                  const valData = await valRes.json();
+                                  if (valData && valData.warning) {
+                                    console.warn("Category DB validation notice:", valData.warning);
+                                  }
+                                }
+                              } catch (vErr) {
+                                console.warn("Validation endpoint warning:", vErr);
                               }
                               
                               const categoryPayload = {
@@ -3484,13 +3486,15 @@ export default function AdminPage() {
                                 serialNumber: catFormSerialNumber,
                                 updatedAt: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
                               };
+
                               const res = await fetch('/api/categories', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(categoryPayload)
                               });
+
                               if (res.ok) {
-                                showToast(`✓ Category Saved Successfully to Database`);
+                                showToast(`✓ Category Saved Successfully!`);
                                 setEditingCategory(null);
                                 setIsCreatingCategory(false);
                                 setCategoryValidationError(null);
@@ -3502,13 +3506,13 @@ export default function AdminPage() {
                                 loadCategoriesFromApi();
                                 forceSyncDatabase();
                               } else {
-                                const err = await res.json();
+                                const err = await res.json().catch(() => ({ message: 'Failed to save category' }));
                                 setCategoryValidationError(err);
-                                showToast(`❌ ডাটাবেজে সেভ হয়নি: ${err.message || err.error || 'Failed to save'}`);
+                                showToast(`❌ error: ${err.message || err.error || 'Failed to save category'}`);
                               }
                             } catch (err: any) {
-                              console.error(err);
-                              showToast("An error occurred during category save.");
+                              console.error("Error saving category:", err);
+                              showToast(`❌ Category save error: ${err?.message || "Please check details and try again"}`);
                             } finally {
                               setIsLoading(false);
                             }

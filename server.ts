@@ -329,10 +329,10 @@ async function startServer() {
     const supabase = getSupabaseClient();
 
     if (!supabase) {
-      return res.status(400).json({
-        valid: false,
-        error: "Database Not Connected",
-        message: "Supabase database is not connected. Please check configuration."
+      return res.json({
+        valid: true,
+        warning: "Database Not Connected",
+        message: "Supabase database is not connected. Data will be saved to local application database."
       });
     }
 
@@ -342,6 +342,13 @@ async function startServer() {
 
       if (error) {
         const parsed = parseSupabaseError(error, targetTable);
+        if (targetTable === "categories") {
+          return res.json({
+            valid: true,
+            warning: parsed.message,
+            message: `Category will be saved locally. (${parsed.message})`
+          });
+        }
         return res.status(400).json(parsed);
       }
 
@@ -351,6 +358,13 @@ async function startServer() {
       });
     } catch (err: any) {
       const parsed = parseSupabaseError(err, targetTable);
+      if (targetTable === "categories") {
+        return res.json({
+          valid: true,
+          warning: parsed.message,
+          message: "Category will be saved to local application database."
+        });
+      }
       return res.status(400).json(parsed);
     }
   });
@@ -1085,127 +1099,134 @@ async function startServer() {
   });
 
   app.post("/api/categories", async (req, res) => {
-    const { id, name, iconImage, mainBanner, sectionBanner, status, serialNumber, slug: customSlug } = req.body;
-    
-    const slug = customSlug || (name ? name.trim().toLowerCase().replace(/\s+/g, "-") : ("cat-" + Date.now()));
-    const catId = id || ("cat_" + Date.now());
-    const updatedAt = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    try {
+      const { id, name, iconImage, mainBanner, sectionBanner, status, serialNumber, slug: customSlug } = req.body;
+      
+      const slug = customSlug || (name ? name.trim().toLowerCase().replace(/\s+/g, "-") : ("cat-" + Date.now()));
+      const catId = id || ("cat_" + Date.now());
+      const updatedAt = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      return res.status(400).json({
-        valid: false,
-        error: "Database Not Connected",
-        message: "Supabase database is not connected. Please check URL and Key in admin settings."
-      });
-    }
+      const formattedCategory = {
+        id: catId,
+        name: name || "New Category",
+        slug: slug,
+        iconImage: iconImage || "",
+        image: iconImage || "",
+        mainBanner: mainBanner || "",
+        sectionBanner: sectionBanner || "",
+        status: status !== undefined ? !!status : true,
+        serialNumber: serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1),
+        lastEdited: updatedAt,
+        updatedAt: updatedAt,
+        shortTitle: name || "New Category"
+      };
 
-    // Prepare database insert/update payload matching Supabase column names
-    const dbPayload = {
-      id: catId,
-      name: name || "New Category",
-      slug: slug,
-      icon_image: iconImage || '',
-      image: iconImage || '',
-      main_banner: mainBanner || '',
-      section_banner: sectionBanner || '',
-      status: status !== undefined ? !!status : true,
-      serial_number: serialNumber !== undefined ? Number(serialNumber) : 1,
-      last_edited: updatedAt,
-      updated_at: updatedAt,
-      short_title: name || "New Category"
-    };
-
-    // STRICT DATABASE WRITE: Attempt upsert into Supabase FIRST
-    const { error } = await supabase.from('categories').upsert(dbPayload);
-
-    if (error) {
-      console.error("Supabase Category save failed:", error.message);
-      const parsedError = parseSupabaseError(error, 'categories');
-      // STOP! DO NOT SAVE LOCALLY IF DATABASE SAVE FAILS!
-      return res.status(400).json(parsedError);
-    }
-
-    // ONLY IF SUPABASE WRITE SUCCEEDED -> Update local memory & file storage
-    const formattedCategory = {
-      id: catId,
-      name: name || "New Category",
-      slug: slug,
-      iconImage: iconImage || "",
-      image: iconImage || "",
-      mainBanner: mainBanner || "",
-      sectionBanner: sectionBanner || "",
-      status: status !== undefined ? !!status : true,
-      serialNumber: serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1),
-      lastEdited: updatedAt,
-      updatedAt: updatedAt,
-      shortTitle: name || "New Category"
-    };
-
-    const existingByIndex = localCategories.findIndex(c => c.id === catId || c.slug === slug);
-    if (existingByIndex !== -1) {
-      localCategories[existingByIndex] = formattedCategory;
-    } else {
-      localCategories.push(formattedCategory);
-    }
-    persistCategories();
-
-    // Update matching products
-    localProducts = localProducts.map(p => {
-      const matchesCategory = p.categoryId === catId || p.categorySlug === slug;
-      if (matchesCategory && p.unpublishedBySystem === true) {
-        return {
-          ...p,
-          status: "published",
-          unpublishedBySystem: false,
-          categoryId: catId,
-          categorySlug: slug,
-          categoryName: formattedCategory.name
-        };
+      // 1. ALWAYS UPDATE LOCAL APPLICATION MEMORY & DISK STORAGE
+      const existingByIndex = localCategories.findIndex(c => c.id === catId || c.slug === slug);
+      if (existingByIndex !== -1) {
+        localCategories[existingByIndex] = formattedCategory;
+      } else {
+        localCategories.push(formattedCategory);
       }
-      return p;
-    });
-    persistProducts();
+      persistCategories();
 
-    res.status(200).json(formattedCategory);
-  });
-
-  app.delete("/api/categories/:id", async (req, res) => {
-    const { id } = req.params;
-    const categoryToDelete = localCategories.find(c => c.id === id);
-    const slugToDelete = categoryToDelete?.slug;
-    const nameToDelete = categoryToDelete?.name;
-
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) {
-        const parsedError = parseSupabaseError(error, 'categories');
-        return res.status(400).json(parsedError);
-      }
-    }
-
-    if (categoryToDelete) {
+      // Update matching products
       localProducts = localProducts.map(p => {
-        const matchesCategory = p.categoryId === id || 
-                                (slugToDelete && p.categorySlug === slugToDelete) || 
-                                (nameToDelete && (p.categoryName === nameToDelete || p.category === nameToDelete));
-
-        if (matchesCategory && p.status === "published") {
+        const matchesCategory = p.categoryId === catId || p.categorySlug === slug;
+        if (matchesCategory && p.unpublishedBySystem === true) {
           return {
             ...p,
-            status: "unpublished",
-            unpublishedBySystem: true
+            status: "published",
+            unpublishedBySystem: false,
+            categoryId: catId,
+            categorySlug: slug,
+            categoryName: formattedCategory.name
           };
         }
         return p;
       });
       persistProducts();
-    }
 
-    localCategories = localCategories.filter(c => c.id !== id);
-    persistCategories();
-    res.json({ success: true, message: "Category deleted successfully" });
+      // 2. ALSO SYNC TO SUPABASE IF CONNECTED
+      let dbSynced = false;
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const dbPayload = {
+            id: catId,
+            name: name || "New Category",
+            slug: slug,
+            icon_image: iconImage || '',
+            image: iconImage || '',
+            main_banner: mainBanner || '',
+            section_banner: sectionBanner || '',
+            status: status !== undefined ? !!status : true,
+            serial_number: serialNumber !== undefined ? Number(serialNumber) : 1,
+            last_edited: updatedAt,
+            updated_at: updatedAt,
+            short_title: name || "New Category"
+          };
+
+          const { error } = await supabase.from('categories').upsert(dbPayload);
+          if (error) {
+            console.warn("Supabase Category save sync warning:", error.message);
+          } else {
+            dbSynced = true;
+          }
+        } catch (sbErr: any) {
+          console.warn("Supabase Category save sync exception:", sbErr);
+        }
+      }
+
+      res.status(200).json({ ...formattedCategory, dbSynced });
+    } catch (err: any) {
+      console.error("Error in POST /api/categories:", err);
+      res.status(500).json({ error: "Failed to save category", message: err.message });
+    }
+  });
+
+  app.delete("/api/categories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const categoryToDelete = localCategories.find(c => c.id === id);
+      const slugToDelete = categoryToDelete?.slug;
+      const nameToDelete = categoryToDelete?.name;
+
+      if (categoryToDelete) {
+        localProducts = localProducts.map(p => {
+          const matchesCategory = p.categoryId === id || 
+                                  (slugToDelete && p.categorySlug === slugToDelete) || 
+                                  (nameToDelete && (p.categoryName === nameToDelete || p.category === nameToDelete));
+
+          if (matchesCategory && p.status === "published") {
+            return {
+              ...p,
+              status: "unpublished",
+              unpublishedBySystem: true
+            };
+          }
+          return p;
+        });
+        persistProducts();
+      }
+
+      localCategories = localCategories.filter(c => c.id !== id);
+      persistCategories();
+
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from('categories').delete().eq('id', id);
+        } catch (sbErr) {
+          console.warn("Supabase Category delete exception:", sbErr);
+        }
+      }
+
+      res.json({ success: true, message: "Category deleted successfully" });
+    } catch (err: any) {
+      console.error("Error deleting category:", err);
+      res.status(500).json({ error: "Failed to delete category" });
+    }
   });
 
   app.get("/api/banners", (req, res) => {
