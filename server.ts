@@ -10,32 +10,43 @@ import { getSupabaseClient, checkSupabaseConnection, loadSupabaseConfig, saveSup
 
 // Helper to ensure admin user exists in Supabase
 async function ensureAdminExists() {
-  const adminEmail = "admin.naimshop@gmail.com";
+  const adminEmail = "modeststyleo@gmail.com";
+  const adminPwdHash = crypto.createHash("sha256").update("MODEST@styleo007").digest("hex");
+
   try {
     const supabase = getSupabaseClient();
     if (!supabase) {
       console.log("No Supabase connection. Skipping Admin user seed.");
       return;
     }
-    const adminPwdHash = crypto.createHash("sha256").update("85285296").digest("hex");
+
+    // Seed/Update modeststyleo@gmail.com
     const { data: existing } = await supabase.from('users').select('*').eq('email', adminEmail);
     if (!existing || existing.length === 0) {
-      console.log("Seeding admin user to Supabase...");
-      const adminId = "usr_admin_" + Date.now();
+      console.log("Seeding primary admin user modeststyleo@gmail.com to Supabase...");
+      const adminId = "usr_admin_modeststyleo";
       await supabase.from('users').insert({
         id: adminId,
         email: adminEmail,
         password_hash: adminPwdHash,
-        full_name: "Naim Shop Admin",
+        full_name: "Modest Styleo Admin",
         phone: "",
         role: "admin"
       });
-      console.log("Admin user seeded to Supabase successfully.");
+      await supabase.from('profiles').upsert({
+        id: adminId,
+        email: adminEmail,
+        full_name: "Modest Styleo Admin",
+        role: "admin",
+        updated_at: new Date().toISOString()
+      });
+      console.log("Admin user modeststyleo@gmail.com seeded successfully.");
     } else {
       const adminDoc = existing[0];
       if (adminDoc.password_hash !== adminPwdHash || adminDoc.role !== "admin") {
          await supabase.from('users').update({ password_hash: adminPwdHash, role: "admin" }).eq('email', adminEmail);
-         console.log("Admin user updated in Supabase with new password.");
+         await supabase.from('profiles').upsert({ id: adminDoc.id, email: adminEmail, full_name: "Modest Styleo Admin", role: "admin" });
+         console.log("Admin user modeststyleo@gmail.com updated in Supabase.");
       }
     }
   } catch (err) {
@@ -378,12 +389,12 @@ async function startServer() {
       }
 
       // Admin fallback
-      if (email === "admin.naimshop@gmail.com" && password === "85285296") {
+      if (email === "modeststyleo@gmail.com" && password === "MODEST@styleo007") {
         return res.json({
           user: {
-            id: "usr_admin_default",
-            email,
-            full_name: "Naim Shop Admin",
+            id: "usr_admin_modeststyleo",
+            email: "modeststyleo@gmail.com",
+            full_name: "Modest Styleo Admin",
             phone: "",
             avatar_url: "",
             role: "admin"

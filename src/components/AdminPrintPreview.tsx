@@ -630,7 +630,7 @@ function CompanyStickerSheet({ order, companySettings, size, paymentConfigs }: {
     companyName: "NaimShop Bangladesh",
     phone: "01712345678",
     bkashNumber: "01700000000",
-    email1: "admin.naimshop@gmail.com",
+    email1: "modeststyleo@gmail.com",
     email2: "support.naimshop@gmail.com",
     website: "https://naimshop.com",
     address: "Shop 204, Sector 11, Uttara, Dhaka, Bangladesh"

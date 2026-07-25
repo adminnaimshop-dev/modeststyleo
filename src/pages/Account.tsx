@@ -12,7 +12,7 @@ import {
   ShoppingBag, ArrowRight, Grid, Truck, Heart, RotateCcw, MapPin, Bell, Key, 
   MessageSquare, Download, RefreshCw, Send, Image, Phone, CheckCircle2, 
   ChevronRight, Calendar, Zap, AlertTriangle, Shield, AlertCircle, ShoppingCart, Star,
-  Clock, Settings, HelpCircle, CreditCard, LogOut, Gift, Check, Lock, FileText
+  Clock, Settings, HelpCircle, CreditCard, LogOut, Gift, Check, Lock, FileText, X
 } from 'lucide-react';
 import { Product, Review, Banner } from '../types';
 import BottomNav from '../components/BottomNav';

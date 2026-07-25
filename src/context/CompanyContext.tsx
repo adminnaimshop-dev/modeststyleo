@@ -5,7 +5,7 @@ const defaultSettings = {
   logo: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&q=80',
   mobile: '01712345678',
   whatsapp: '01700000000',
-  email: 'admin.naimshop@gmail.com',
+  email: 'modeststyleo@gmail.com',
   email2: 'moderator@naimshop.com',
   helpDeskEmail: 'help@naimshop.com',
   website: 'https://naimshop.com',

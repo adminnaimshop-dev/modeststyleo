@@ -11,7 +11,7 @@ import { authClient } from '../lib/auth';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin.naimshop@gmail.com');
+  const [email, setEmail] = useState('modeststyleo@gmail.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);

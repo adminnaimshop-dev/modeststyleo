@@ -15,9 +15,10 @@ export function getEnvVars(): SupabaseConfig {
 
   // Check Vite client-side environment variables first
   try {
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      url = import.meta.env.VITE_SUPABASE_URL || '';
-      key = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      const metaEnv = (import.meta as any).env;
+      url = metaEnv.VITE_SUPABASE_URL || '';
+      key = metaEnv.VITE_SUPABASE_ANON_KEY || metaEnv.VITE_SUPABASE_KEY || '';
     }
   } catch (e) {
     // Ignore meta environment access error if outside Vite context

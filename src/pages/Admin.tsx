@@ -3513,7 +3513,6 @@ export default function AdminPage() {
                               setIsLoading(false);
                             }
                           }}
-                          data-save-category="true"
                           className={`flex-1 py-2.5 text-xs font-black text-white ${isLoading ? 'bg-slate-400' : 'bg-[#ff2f7d] hover:bg-[#e0246a]'} border-none rounded-lg cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-pink-500/10 flex items-center justify-center`}
                         >
                           {isLoading ? <RefreshCw size={14} className="animate-spin mr-2" /> : null}
@@ -5343,7 +5342,7 @@ export default function AdminPage() {
                       <div className="space-y-2">
                         <div>
                           <label className="text-[9px] text-slate-450 uppercase block font-bold">Admin Panel Access Email</label>
-                          <input readOnly value="admin.naimshop@gmail.com" type="text" className="w-full h-10 border border-slate-150 rounded-xl px-3 font-bold bg-slate-100 text-slate-400" />
+                          <input readOnly value="modeststyleo@gmail.com" type="text" className="w-full h-10 border border-slate-150 rounded-xl px-3 font-bold bg-slate-100 text-slate-400" />
                         </div>
                         <div>
                           <label className="text-[9px] text-slate-450 uppercase block font-bold">New Security Access PIN</label>
