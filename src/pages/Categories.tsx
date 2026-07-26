@@ -46,7 +46,9 @@ export default function Categories() {
   const getProductCount = (category: Category) => {
     return products.filter(p => 
       p.categoryId === category.id || 
-      p.categoryName?.toLowerCase() === category.name.toLowerCase()
+      (p.categorySlug && category.slug && p.categorySlug.toLowerCase() === category.slug.toLowerCase()) ||
+      (p.categoryName && category.name && p.categoryName.toLowerCase() === category.name.toLowerCase()) ||
+      (p.category && category.name && p.category.toLowerCase() === category.name.toLowerCase())
     ).length;
   };
 

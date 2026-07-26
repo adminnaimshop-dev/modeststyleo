@@ -29,6 +29,7 @@ import CustomersPage from './Customers';
 import DatabaseSetup from './Admin/DatabaseSetup';
 import { useCompany } from '../context/CompanyContext';
 import { authClient } from '../lib/auth';
+import { fetchCategoriesAndCache } from '../utils/productCache';
 
 
 export default function AdminPage() {
@@ -206,8 +207,7 @@ export default function AdminPage() {
   };
 
   const loadCategoriesFromApi = () => {
-    fetch('/api/categories')
-      .then(res => res.json())
+    fetchCategoriesAndCache()
       .then(data => {
         if (Array.isArray(data)) {
           setCategoriesDb(data);

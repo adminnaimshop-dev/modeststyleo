@@ -104,7 +104,7 @@ export default function Home() {
       .catch(err => console.error(err));
       
     fetchCategoriesAndCache().then(data => {
-        if (Array.isArray(data) && data.length) {
+        if (Array.isArray(data)) {
           setCategoriesDb(data);
         }
       })
@@ -240,7 +240,12 @@ export default function Home() {
             )}
 
             {categories.map(cat => {
-              const catProducts = filteredProducts.filter(p => p.categoryId === cat.id);
+              const catProducts = filteredProducts.filter(p => 
+                p.categoryId === cat.id ||
+                (p.categorySlug && cat.slug && p.categorySlug.toLowerCase() === cat.slug.toLowerCase()) ||
+                (p.categoryName && cat.name && p.categoryName.toLowerCase() === cat.name.toLowerCase()) ||
+                (p.category && cat.name && p.category.toLowerCase() === cat.name.toLowerCase())
+              );
               if (catProducts.length === 0) return null;
 
               const displayedCatProducts = catProducts.slice(0, 4);

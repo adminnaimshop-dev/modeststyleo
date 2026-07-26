@@ -1068,10 +1068,9 @@ async function startServer() {
     res.json(localReviewSettings);
   });
 
-  // Fast helper to attempt category upsert to Supabase while auto-stripping missing optional columns
+  // Fast helper to attempt category upsert to Supabase with dynamic column detection
   async function upsertCategoryToSupabase(supabase: any, fullData: Record<string, any>) {
-    const payload: Record<string, any> = {
-      id: fullData.id,
+    const candidateMap: Record<string, any> = {
       category_name: fullData.catName,
       name: fullData.catName,
       slug: fullData.cleanSlug,
@@ -1092,15 +1091,78 @@ async function startServer() {
       short_title: fullData.catName
     };
 
-    for (let attempt = 0; attempt < 10; attempt++) {
+    // Discover valid columns in categories table
+    let validCols: string[] = [];
+    try {
+      const { data: sampleRow, error: sampleErr } = await supabase.from('categories').select('*').limit(1);
+      if (!sampleErr && sampleRow && sampleRow.length > 0) {
+        validCols = Object.keys(sampleRow[0]);
+      }
+    } catch (_) {}
+
+    if (validCols.length === 0) {
+      const allCandidates = Object.keys(candidateMap);
+      for (const col of allCandidates) {
+        try {
+          const { error } = await supabase.from('categories').select(col).limit(0);
+          if (!error) validCols.push(col);
+        } catch (_) {}
+      }
+    }
+
+    // Check if 'id' column exists
+    if (!validCols.includes('id')) {
+      try {
+        const { error } = await supabase.from('categories').select('id').limit(0);
+        if (!error) validCols.push('id');
+      } catch (_) {}
+    }
+
+    // Build payload using only valid columns
+    const payload: Record<string, any> = {};
+    if (validCols.length > 0) {
+      for (const col of validCols) {
+        if (col === 'id') {
+          payload['id'] = fullData.id;
+        } else if (candidateMap[col] !== undefined) {
+          payload[col] = candidateMap[col];
+        }
+      }
+    } else {
+      payload.id = fullData.id;
+      payload.category_name = fullData.catName;
+      payload.name = fullData.catName;
+      payload.slug = fullData.cleanSlug;
+      payload.image = fullData.imgVal;
+      payload.banner = fullData.bannerVal;
+      payload.description = fullData.description || "";
+      payload.status = fullData.status !== undefined ? !!fullData.status : true;
+      payload.display_order = fullData.orderVal;
+      payload.updated_at = fullData.nowStr;
+    }
+
+    for (let attempt = 0; attempt < 15; attempt++) {
       const { error } = await supabase.from('categories').upsert(payload);
       if (!error) {
         return { success: true, error: null };
       }
 
       const errMsg = error.message || '';
-      if (errMsg.includes('does not exist') || errMsg.includes('42P01') || errMsg.includes('PGRST301') || errMsg.includes('relation "public.categories"')) {
+      if (errMsg.includes('does not exist') && (errMsg.includes('42P01') || errMsg.includes('PGRST301') || errMsg.includes('relation "public.categories"'))) {
         return { success: false, tableExists: false, error };
+      }
+
+      // Handle ID type mismatch for integer primary keys in PostgreSQL
+      if (error.code === '22P02' || errMsg.includes('invalid input syntax for type integer') || errMsg.includes('invalid input syntax for integer')) {
+        if (typeof payload.id === 'string' && payload.id.startsWith('cat_')) {
+          const numId = Number(payload.id.replace('cat_', ''));
+          if (!isNaN(numId) && numId > 0) {
+            payload.id = numId;
+          } else {
+            delete payload.id;
+          }
+          continue;
+        }
       }
 
       // Match missing column name from error
@@ -1112,7 +1174,7 @@ async function startServer() {
         const missingCol = colMatch[1];
         if (payload[missingCol] !== undefined) {
           delete payload[missingCol];
-          continue; // Retry with stripped payload
+          continue;
         }
       }
 
@@ -1306,7 +1368,7 @@ async function startServer() {
           error = fallback.error;
         }
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           const mapped = data.map((c: any) => ({
             id: String(c.id || ''),
             name: c.category_name || c.name || "Category",
@@ -1328,15 +1390,16 @@ async function startServer() {
             seoDescription: c.seo_description || ''
           }));
           localCategories = mapped;
+          persistCategories();
           return res.json(mapped);
-        } else {
-          localCategories = [];
-          return res.json([]);
+        } else if (!error && data && data.length === 0) {
+          // If Supabase table is currently empty, return localCategories fallback
+          if (localCategories && localCategories.length > 0) {
+            return res.json(localCategories);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch categories from Supabase:", err);
-        localCategories = [];
-        return res.json([]);
       }
     }
     res.json(localCategories);
