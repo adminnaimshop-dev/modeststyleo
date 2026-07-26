@@ -3607,7 +3607,18 @@ export default function AdminPage() {
                                 body: JSON.stringify(payload)
                               });
 
-                              const resData = await res.json();
+                              let resData: any = {};
+                              const contentType = res.headers.get("content-type");
+                              if (contentType && contentType.includes("application/json")) {
+                                resData = await res.json();
+                              } else {
+                                const rawText = await res.text();
+                                console.error("Non-JSON response from server:", rawText);
+                                resData = {
+                                  error: "Server Error",
+                                  message: `Server returned invalid response (${res.status}). Please check server logs.`
+                                };
+                              }
 
                               if (res.ok) {
                                 showToast(`✓ Category Saved Successfully!`);
