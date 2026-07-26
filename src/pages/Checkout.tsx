@@ -150,16 +150,34 @@ export default function Checkout() {
       };
 
       // Save to global orders list for Admin and Customer tracking
-      const allOrders = JSON.parse(localStorage.getItem('naimshop_all_orders') || '[]');
-      allOrders.unshift(newOrder);
-      localStorage.setItem('naimshop_all_orders', JSON.stringify(allOrders));
+      try {
+        const rawAll = localStorage.getItem('naimshop_all_orders');
+        const allOrders = rawAll ? JSON.parse(rawAll) : [];
+        if (Array.isArray(allOrders)) {
+          allOrders.unshift(newOrder);
+          localStorage.setItem('naimshop_all_orders', JSON.stringify(allOrders));
+        } else {
+          localStorage.setItem('naimshop_all_orders', JSON.stringify([newOrder]));
+        }
+      } catch (_) {
+        localStorage.setItem('naimshop_all_orders', JSON.stringify([newOrder]));
+      }
 
       // Also save to user specific key for backward compatibility if needed, but we'll prefer the global list
       const userSuffix = loggedInCustomer?.id || 'guest';
       const userOrdersKey = `orders_${userSuffix}`;
-      const userOrders = JSON.parse(localStorage.getItem(userOrdersKey) || '[]');
-      userOrders.unshift(newOrder);
-      localStorage.setItem(userOrdersKey, JSON.stringify(userOrders));
+      try {
+        const rawUser = localStorage.getItem(userOrdersKey);
+        const userOrders = rawUser ? JSON.parse(rawUser) : [];
+        if (Array.isArray(userOrders)) {
+          userOrders.unshift(newOrder);
+          localStorage.setItem(userOrdersKey, JSON.stringify(userOrders));
+        } else {
+          localStorage.setItem(userOrdersKey, JSON.stringify([newOrder]));
+        }
+      } catch (_) {
+        localStorage.setItem(userOrdersKey, JSON.stringify([newOrder]));
+      }
 
       // Track Order Placement
       updateSessionTracker(prev => ({ ...prev, status: 'Order Placed', orderId: orderId }));

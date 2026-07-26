@@ -1477,51 +1477,7 @@ async function startServer() {
         shortTitle: catName
       };
 
-      // STRICT DB CHECK FIRST IF SUPABASE / DATABASE IS CONNECTED
-      let dbSynced = false;
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        const dbResult = await upsertCategoryToSupabase(supabase, {
-          id: catId,
-          catName,
-          cleanSlug,
-          imgVal,
-          bannerVal,
-          sectionBanner,
-          description,
-          status,
-          orderVal,
-          seoTitle,
-          seoDescription,
-          createdAt,
-          nowStr
-        });
-
-        if (!dbResult.success) {
-          if (dbResult.tableExists === false) {
-            return res.status(400).json({
-              success: false,
-              valid: false,
-              tableExists: false,
-              missingColumns: ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
-              error: "Category table does not exist.",
-              message: "Table named 'categories' has not been created in the database. Category will NOT be saved until table is created."
-            });
-          }
-
-          return res.status(400).json({
-            success: false,
-            valid: false,
-            tableExists: true,
-            error: "Database write error",
-            message: `Database write failed: ${dbResult.error?.message || 'Failed to save category to database'}. Category will NOT be saved until database error is resolved.`
-          });
-        }
-
-        dbSynced = true;
-      }
-
-      // ONLY PERSIST LOCALLY WHEN DATABASE SAVE HAS SUCCEEDED (OR LOCAL-ONLY MODE)
+      // Always persist locally first so categories are never lost
       const existingByIndex = localCategories.findIndex(c => c.id === catId);
       if (existingByIndex !== -1) {
         localCategories[existingByIndex] = formattedCategory;
@@ -1546,7 +1502,46 @@ async function startServer() {
       });
       persistProducts();
 
-      res.status(200).json({ ...formattedCategory, dbSynced });
+      // Sync to Supabase if database client is available
+      let dbSynced = false;
+      let dbErrorDetails = null;
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const dbResult = await upsertCategoryToSupabase(supabase, {
+            id: catId,
+            catName,
+            cleanSlug,
+            imgVal,
+            bannerVal,
+            sectionBanner,
+            description,
+            status,
+            orderVal,
+            seoTitle,
+            seoDescription,
+            createdAt,
+            nowStr
+          });
+
+          if (dbResult.success) {
+            dbSynced = true;
+          } else {
+            dbErrorDetails = dbResult.error?.message || "Supabase write failed";
+          }
+        } catch (sbErr: any) {
+          console.warn("Supabase upsert exception:", sbErr?.message);
+          dbErrorDetails = sbErr?.message;
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        valid: true,
+        ...formattedCategory,
+        dbSynced,
+        dbError: dbErrorDetails
+      });
     } catch (err: any) {
       console.error("Error in POST /api/categories:", err);
       res.status(500).json({ error: "Failed to save category", message: err.message });

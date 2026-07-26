@@ -20,23 +20,35 @@ export default function Invoice() {
   useEffect(() => {
     // Find order in localStorage
     let foundOrder = null;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('orders_')) {
-        const orders = JSON.parse(localStorage.getItem(key) || '[]');
-        foundOrder = orders.find((o: any) => o.id === id);
-        if (foundOrder) break;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('orders_')) {
+          try {
+            const raw = localStorage.getItem(key);
+            const orders = raw ? JSON.parse(raw) : [];
+            if (Array.isArray(orders)) {
+              foundOrder = orders.find((o: any) => o?.id === id);
+              if (foundOrder) break;
+            }
+          } catch (_) {}
+        }
       }
-    }
-    
-    if (foundOrder) {
-      setOrder(foundOrder);
-    } else {
-      // If not found, check if it's a guest order
-      const guestOrders = JSON.parse(localStorage.getItem('orders_guest') || '[]');
-      foundOrder = guestOrders.find((o: any) => o.id === id);
-      if (foundOrder) setOrder(foundOrder);
-    }
+      
+      if (foundOrder) {
+        setOrder(foundOrder);
+      } else {
+        // If not found, check if it's a guest order
+        try {
+          const rawGuest = localStorage.getItem('orders_guest');
+          const guestOrders = rawGuest ? JSON.parse(rawGuest) : [];
+          if (Array.isArray(guestOrders)) {
+            foundOrder = guestOrders.find((o: any) => o?.id === id);
+            if (foundOrder) setOrder(foundOrder);
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
   }, [id]);
 
   const handleDownloadPDF = async () => {

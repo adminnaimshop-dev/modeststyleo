@@ -207,7 +207,7 @@ export default function AdminPage() {
   };
 
   const loadCategoriesFromApi = () => {
-    fetchCategoriesAndCache()
+    fetchCategoriesAndCache(true)
       .then(data => {
         if (Array.isArray(data)) {
           setCategoriesDb(data);

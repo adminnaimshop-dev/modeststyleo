@@ -174,8 +174,8 @@ export async function fetchProductsAndCache(silent = false): Promise<Product[]> 
 /**
  * Fetches categories from API, updates memory and localStorage cache.
  */
-export async function fetchCategoriesAndCache(): Promise<Category[]> {
-  if (isFetchingCategoriesPromise) {
+export async function fetchCategoriesAndCache(force = false): Promise<Category[]> {
+  if (isFetchingCategoriesPromise && !force) {
     return isFetchingCategoriesPromise;
   }
 
