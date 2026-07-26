@@ -184,7 +184,7 @@ export async function fetchCategoriesAndCache(): Promise<Category[]> {
       const response = await fetch('/api/categories');
       if (response.ok) {
         const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           memoryCategoriesCache = data;
           try {
             localStorage.setItem('naimshop_categories_cache', JSON.stringify(data));

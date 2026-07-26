@@ -12,7 +12,7 @@ import {
   MessageCircle, Trash2, CheckCircle2, ChevronRight, PlusCircle, 
   Copy, ArrowUp, ArrowDown, Plus, Wallet, Banknote, ImagePlus, Upload, 
   Info, Search, Eye, Printer, ShieldAlert, BadgeInfo, Save, X, RefreshCw, Star, Check, Menu, LogOut, ClipboardX, Database, ExternalLink,
-  Server, Globe, AlertCircle
+  Server, Globe, AlertCircle, FolderTree, Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from '../lib/safe-motion';
 import { Product, Review, Banner, Category } from '../types';
@@ -132,17 +132,38 @@ export default function AdminPage() {
   const [categoriesDb, setCategoriesDb] = useState<Category[]>(() => { try { return JSON.parse(localStorage.getItem('naimshop_categories') || '[]'); } catch { return []; } });
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [categoryTab, setCategoryTab] = useState<'listing' | 'add'>('listing');
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  // Form Fields State
+  // Form Fields State for Category
   const [catFormName, setCatFormName] = useState('');
+  const [catFormSlug, setCatFormSlug] = useState('');
   const [catFormShortTitle, setCatFormShortTitle] = useState('');
   const [catFormImage, setCatFormImage] = useState('');
+  const [catFormBanner, setCatFormBanner] = useState('');
   const [catFormMainBanner, setCatFormMainBanner] = useState('');
   const [catFormSectionBanner, setCatFormSectionBanner] = useState('');
+  const [catFormDescription, setCatFormDescription] = useState('');
+  const [catFormDisplayOrder, setCatFormDisplayOrder] = useState(1);
   const [catFormStatus, setCatFormStatus] = useState(true);
-  const [catFormSerialNumber, setCatFormSerialNumber] = useState(1);
+  const [catFormSeoTitle, setCatFormSeoTitle] = useState('');
+  const [catFormSeoDescription, setCatFormSeoDescription] = useState('');
+
+  // DB Schema Check State for Category
+  const [dbCheckState, setDbCheckState] = useState<{
+    checking: boolean;
+    valid: boolean;
+    tableExists: boolean;
+    missingColumns: string[];
+    message: string;
+    sqlScript?: string;
+  }>({
+    checking: false,
+    valid: true,
+    tableExists: true,
+    missingColumns: [],
+    message: ''
+  });
 
   const resizeCategoryAsset = (file: File, width: number, height: number): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -3137,490 +3158,728 @@ export default function AdminPage() {
 
               {/* ================= 2. SUBPAGE: PRODUCTS BAR (Extracted to primary render) ================= */}
 
-              {/* ================= 3. SUBPAGE: CATEGORIES ================= */}
+              {/* ================= 3. SUBPAGE: CATEGORIES MANAGEMENT MODULE ================= */}
               {activeSubpage === 'categories' && (
-                <div className="space-y-4 max-w-2xl mx-auto pb-24 relative z-20 pointer-events-auto">
-                  {/* Top Bar back+title */}
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
+                <div className="w-full pb-20 space-y-4 relative z-20 pointer-events-auto">
+                  {/* Category Management Page Title & Subpage Buttons - Direct on page canvas */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-300 pb-3">
+                    <div className="flex items-center gap-2.5">
                       <button 
+                        type="button"
                         onClick={() => {
-                          if (editingCategory || isCreatingCategory) {
+                          if (editingCategory || categoryTab === 'add') {
                             setEditingCategory(null);
-                            setIsCreatingCategory(false);
+                            setCategoryTab('listing');
                           } else {
                             setActiveSubpage(null);
                           }
                         }}
-                        className="flex items-center justify-center p-2 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 text-slate-700 cursor-pointer"
+                        className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-none border border-slate-400 cursor-pointer transition-colors"
+                        title="Go Back"
                       >
                         <ArrowLeft size={16} />
                       </button>
-                      <h3 className="text-sm font-black text-slate-850 tracking-tight uppercase">
-                        {editingCategory ? "Edit Category" : isCreatingCategory ? "Add Category" : "Categories"}
-                      </h3>
+
+                      <div>
+                        <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">Category Management</h1>
+                        <p className="text-[11px] font-semibold text-slate-500">Product Categories & System Schema Administration</p>
+                      </div>
                     </div>
-                    
-                    {!(editingCategory || isCreatingCategory) && (
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {categoriesDb.length} Registered Categories
-                      </span>
-                    )}
+
+                    {/* Directly Placed Side-by-Side Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategory(null);
+                          setCategoryTab('add');
+                          setCatFormName('');
+                          setCatFormSlug('');
+                          setCatFormImage('');
+                          setCatFormBanner('');
+                          setCatFormDescription('');
+                          setCatFormStatus(true);
+                          setCatFormSeoTitle('');
+                          setCatFormSeoDescription('');
+                          const maxOrder = categoriesDb.reduce((max, c) => Math.max(max, c.displayOrder || c.serialNumber || 0), 0);
+                          setCatFormDisplayOrder(maxOrder + 1);
+                        }}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-none cursor-pointer border transition-all ${
+                          (categoryTab === 'add' || editingCategory) 
+                            ? 'bg-[#ff2f7d] text-white border-[#ff2f7d]' 
+                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        <PlusCircle size={14} />
+                        <span>Add Category</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCategory(null);
+                          setCategoryTab('listing');
+                          loadCategoriesFromApi();
+                        }}
+                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-none cursor-pointer border transition-all ${
+                          (categoryTab === 'listing' && !editingCategory) 
+                            ? 'bg-[#ff2f7d] text-white border-[#ff2f7d]' 
+                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        <FolderTree size={14} />
+                        <span>Category Listing ({categoriesDb.length})</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Category Create/Edit Page fields */}
-                  {(editingCategory || isCreatingCategory) ? (
-                    <div className="bg-white p-4 rounded-xl border border-slate-100 space-y-4">
-                      {/* Database Validation Error */}
-                      {categoryValidationError && (
-                        <div className="bg-slate-900 border-l-4 border-rose-500 rounded-xl p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
-                          <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 bg-rose-500/10 rounded-lg flex items-center justify-center shrink-0 border border-rose-500/20">
-                              <AlertCircle className="text-rose-500" size={16} />
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-rose-500">Supabase Database Issue</span>
-                                <button 
-                                  onClick={() => setCategoryValidationError(null)}
-                                  className="text-slate-500 hover:text-white cursor-pointer bg-transparent border-none"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                              <p className="text-[12px] font-bold text-slate-100 leading-relaxed mb-2">
-                                {categoryValidationError.message || categoryValidationError.error}
-                              </p>
+                  {/* Minimal Inline Database Validation Status Bar */}
+                  {(!dbCheckState.tableExists || dbCheckState.missingColumns.length > 0 || dbCheckState.sqlScript) && (
+                    <div className="bg-slate-900 border border-slate-800 p-3 rounded-none text-white text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Database size={14} className="text-[#ff2f7d]" />
+                          <span className="font-bold uppercase text-[11px] text-slate-200">Database Schema Validation:</span>
+                          {!dbCheckState.tableExists ? (
+                            <span className="text-rose-400 font-semibold">Table missing</span>
+                          ) : dbCheckState.missingColumns.length > 0 ? (
+                            <span className="text-amber-400 font-semibold">Missing columns ({dbCheckState.missingColumns.join(', ')})</span>
+                          ) : (
+                            <span className="text-emerald-400 font-semibold">Verified</span>
+                          )}
+                        </div>
 
-                              {categoryValidationError.sqlFix && (
-                                <div className="mb-3 p-2 bg-slate-950 border border-slate-800 rounded-lg">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[9px] font-bold text-amber-400">Run this SQL in Supabase SQL Editor:</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(categoryValidationError.sqlFix);
-                                        showToast("📋 SQL Command Copied!");
-                                      }}
-                                      className="text-[9px] text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded cursor-pointer border-none flex items-center gap-1"
-                                    >
-                                      <Copy size={10} />
-                                      <span>Copy SQL</span>
-                                    </button>
-                                  </div>
-                                  <code className="text-[10px] text-emerald-400 font-mono block overflow-x-auto p-1 bg-black/40 rounded">
-                                    {categoryValidationError.sqlFix}
-                                  </code>
-                                </div>
-                              )}
-                              
-                              <div className="flex flex-wrap items-center gap-2">
-                                <a 
-                                  href="https://supabase.com/dashboard/project/mmughpeyyucoetqyrhhw/sql/new" 
-                                  target="_blank" 
-                                  rel="noreferrer"
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1.5 transition-all no-underline shadow-sm"
-                                >
-                                  <ExternalLink size={11} />
-                                  <span>Open Supabase SQL Editor</span>
-                                </a>
-                                <button 
-                                  type="button"
-                                  onClick={() => {
-                                    setCategoryValidationError(null);
-                                    const saveBtn = document.querySelector('button[data-save-category="true"]') as HTMLButtonElement;
-                                    if (saveBtn) saveBtn.click();
-                                  }}
-                                  className="bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-sm"
-                                >
-                                  <RefreshCw size={11} />
-                                  <span>Retry Save</span>
-                                </button>
-                              </div>
-                            </div>
+                        <div className="flex items-center gap-2">
+                          {!dbCheckState.tableExists && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setIsLoading(true);
+                                try {
+                                  const res = await fetch('/api/categories/create-table', { method: 'POST' });
+                                  const data = await res.json();
+                                  if (data.sqlScript) {
+                                    setDbCheckState(prev => ({ ...prev, sqlScript: data.sqlScript }));
+                                    showToast("📋 Table SQL generated!");
+                                  } else {
+                                    showToast("✓ Category Table Checked!");
+                                  }
+                                } catch (e) {
+                                  showToast("Table operation finished.");
+                                } finally {
+                                  setIsLoading(false);
+                                }
+                              }}
+                              className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-none border-none cursor-pointer"
+                            >
+                              Create Table
+                            </button>
+                          )}
+
+                          {dbCheckState.tableExists && dbCheckState.missingColumns.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setIsLoading(true);
+                                try {
+                                  const res = await fetch('/api/categories/add-missing-columns', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ columns: dbCheckState.missingColumns })
+                                  });
+                                  const data = await res.json();
+                                  if (data.sqlScript) {
+                                    setDbCheckState(prev => ({ ...prev, sqlScript: data.sqlScript }));
+                                    showToast("📋 Column SQL generated!");
+                                  }
+                                } catch (e) {
+                                  showToast("Column check completed.");
+                                } finally {
+                                  setIsLoading(false);
+                                }
+                              }}
+                              className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black uppercase px-2.5 py-1 rounded-none border-none cursor-pointer"
+                            >
+                              Add Columns
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setDbCheckState(prev => ({ ...prev, checking: true }));
+                              try {
+                                const res = await fetch('/api/categories/validate-schema');
+                                const data = await res.json();
+                                setDbCheckState({
+                                  checking: false,
+                                  valid: data.valid !== false,
+                                  tableExists: data.tableExists !== false,
+                                  missingColumns: data.missingColumns || [],
+                                  message: data.message || '',
+                                  sqlScript: data.sqlScript
+                                });
+                                showToast("Schema re-scanned!");
+                              } catch (e) {
+                                setDbCheckState(prev => ({ ...prev, checking: false }));
+                              }
+                            }}
+                            className="text-[10px] font-bold uppercase text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-none border border-slate-700 cursor-pointer flex items-center gap-1"
+                          >
+                            <RefreshCw size={10} className={dbCheckState.checking ? "animate-spin" : ""} />
+                            <span>Verify</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {dbCheckState.sqlScript && (
+                        <div className="bg-black/60 p-2 border border-slate-700 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-amber-400">Run SQL in Supabase SQL Editor:</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(dbCheckState.sqlScript || '');
+                                showToast("📋 SQL Copied!");
+                              }}
+                              className="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded-none border border-slate-600 cursor-pointer"
+                            >
+                              Copy
+                            </button>
                           </div>
+                          <pre className="text-[10px] font-mono text-emerald-400 overflow-x-auto p-1.5 bg-slate-950">
+                            {dbCheckState.sqlScript}
+                          </pre>
                         </div>
                       )}
+                    </div>
+                  )}
 
-                      {/* Name */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Category Name *</label>
-                        <input
-                          type="text"
-                          value={catFormName}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setCatFormName(val);
-                            if (val) {
-                              setCatFormShortTitle(val + " Collection");
-                            } else {
-                              setCatFormShortTitle("");
-                            }
-                          }}
-                          placeholder="e.g. Punjabi Collection"
-                          className="w-full text-[12px] font-semibold border border-slate-200 rounded-lg p-2.5 outline-none focus:border-[#ff2f7d]"
-                        />
+                  {/* TAB 1: ADD / EDIT CATEGORY FORM - Rendered directly on full page width */}
+                  {(categoryTab === 'add' || editingCategory) && (
+                    <form onSubmit={(e) => e.preventDefault()} className="w-full space-y-4 pt-1">
+                      <div className="border-b border-slate-300 pb-2 flex items-center justify-between">
+                        <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                          {editingCategory ? "Edit Category Form" : "Add New Category Form"}
+                        </h3>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">* Required Fields</span>
                       </div>
 
-                      {/* Small Category Name / Short Title */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Small Category Name / Short Title *</label>
-                        <input
-                          type="text"
-                          value={catFormShortTitle}
-                          onChange={e => setCatFormShortTitle(e.target.value)}
-                          placeholder="e.g. Traditional Punjabi"
-                          className="w-full text-[12px] font-semibold border border-slate-200 rounded-lg p-2.5 outline-none focus:border-[#ff2f7d]"
-                        />
-                      </div>
-
-                      {/* Category Icon Image */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Category Icon (600 × 600 px)</label>
-                        <label className="relative group rounded-xl overflow-hidden bg-slate-100 border-2 border-dashed border-slate-200 hover:border-[#ff2f7d] transition-colors w-full h-32 flex flex-col items-center justify-center cursor-pointer">
-                          {catFormImage ? (
-                            <>
-                              <img src={catFormImage} className="w-full h-full object-cover" alt="" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                <span className="text-white font-bold text-sm flex items-center gap-2">
-                                  <Upload size={18} /> Replace Icon
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-center p-4">
-                              <Upload size={24} className="text-slate-300 mx-auto mb-2" />
-                              <span className="text-[10px] font-bold text-slate-500">📷 Tap to Upload Category Icon</span>
-                            </div>
-                          )}
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={async (e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const resized = await resizeCategoryAsset(e.target.files[0], 600, 600);
-                                setCatFormImage(resized);
-                                showToast("Icon updated!");
-                              }
-                            }} 
-                            className="hidden" 
-                          />
-                        </label>
-                      </div>
-
-                      {/* Main Category Banner */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Main Category Banner (1600 × 700 px)</label>
-                        <label className="relative group rounded-xl overflow-hidden bg-slate-100 border-2 border-dashed border-slate-200 hover:border-[#ff2f7d] transition-colors w-full h-32 flex flex-col items-center justify-center cursor-pointer">
-                          {catFormMainBanner ? (
-                            <>
-                              <img src={catFormMainBanner} className="w-full h-full object-cover" alt="" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                <span className="text-white font-bold text-sm flex items-center gap-2">
-                                  <Upload size={18} /> Replace Banner
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-center p-4">
-                              <Upload size={24} className="text-slate-300 mx-auto mb-2" />
-                              <span className="text-[10px] font-bold text-slate-500">🖼️ Tap to Upload Main Banner</span>
-                            </div>
-                          )}
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={async (e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const resized = await resizeCategoryAsset(e.target.files[0], 1600, 700);
-                                setCatFormMainBanner(resized);
-                                showToast("Main banner updated!");
-                              }
-                            }} 
-                            className="hidden" 
-                            id="cat_main_banner_input"
-                          />
-                        </label>
-                      </div>
-
-                      {/* Section Category Banner */}
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Section Category Banner (1600 × 700 px)</label>
-                        <label className="relative group rounded-xl overflow-hidden bg-slate-100 border-2 border-dashed border-slate-200 hover:border-[#ff2f7d] transition-colors w-full h-32 flex flex-col items-center justify-center cursor-pointer">
-                          {catFormSectionBanner ? (
-                            <>
-                              <img src={catFormSectionBanner} className="w-full h-full object-cover" alt="" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                <span className="text-white font-bold text-sm flex items-center gap-2">
-                                  <Upload size={18} /> Replace Banner
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="text-center p-4">
-                              <Upload size={24} className="text-slate-300 mx-auto mb-2" />
-                              <span className="text-[10px] font-bold text-slate-500">🖼️ Tap to Upload Section Banner</span>
-                            </div>
-                          )}
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={async (e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                const file = e.target.files[0];
-                                
-                                // Validation
-                                const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-                                if (!validTypes.includes(file.type)) {
-                                   showToast("❌ Image type must be JPG, PNG, or WEBP");
-                                   return;
-                                }
-                                if (file.size > 10 * 1024 * 1024) {
-                                   showToast("❌ Max file size is 10 MB");
-                                   return;
-                                }
-
-                                const resized = await resizeCategoryAsset(file, 1600, 700);
-                                setCatFormSectionBanner(resized);
-                                showToast("Section banner updated!");
-                              }
-                            }} 
-                            className="hidden" 
-                            id="cat_section_banner_input"
-                          />
-                        </label>
-                      </div>
-
-                      {/* Grid for status & serial number */}
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Status Toggle */}
-                        <div className="space-y-1 p-3 bg-slate-50 border border-slate-100 rounded-xl flex flex-col justify-center">
-                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1">Status ON/OFF</span>
-                          <label className="relative inline-flex items-center cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={catFormStatus}
-                              onChange={e => setCatFormStatus(e.target.checked)}
-                              className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#ff2f7d]"></div>
-                            <span className="ml-2 text-xs font-bold text-slate-700">{catFormStatus ? 'Active' : 'Inactive'}</span>
+                      {/* 1. Category Name & Slug */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Category Name *
                           </label>
+                          <input
+                            type="text"
+                            value={catFormName}
+                            onChange={(e) => {
+                              const nameVal = e.target.value;
+                              setCatFormName(nameVal);
+                              const autoSlug = nameVal.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                              setCatFormSlug(autoSlug);
+                              if (!catFormSeoTitle || catFormSeoTitle === catFormName) {
+                                setCatFormSeoTitle(nameVal);
+                              }
+                            }}
+                            placeholder="e.g. Sarees & Lehengas"
+                            className="w-full text-xs font-semibold p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
+                            required
+                          />
                         </div>
 
-                        {/* Serial Number */}
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Serial Number</label>
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block flex items-center justify-between">
+                            <span>Category Slug (Auto Generated) *</span>
+                            <span className="text-[9px] text-slate-400 font-normal lowercase">URL friendly identifier</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={catFormSlug}
+                            onChange={(e) => setCatFormSlug(e.target.value)}
+                            placeholder="e.g. sarees-and-lehengas"
+                            className="w-full text-xs font-mono font-semibold p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-slate-50 text-slate-900"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* 2. Category Image & Banner */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Category Image (Icon / Square)
+                          </label>
+                          <div className="border border-slate-300 p-2.5 rounded-none bg-slate-50 space-y-2">
+                            <div className="flex items-center gap-3">
+                              {catFormImage ? (
+                                <img src={catFormImage} alt="Preview" className="w-14 h-14 object-cover border border-slate-300 rounded-none bg-white shrink-0" />
+                              ) : (
+                                <div className="w-14 h-14 border border-dashed border-slate-300 rounded-none bg-white flex items-center justify-center shrink-0 text-slate-400">
+                                  <ImageIcon size={18} />
+                                </div>
+                              )}
+                              <div className="space-y-1 flex-1">
+                                <label className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold uppercase px-3 py-1.5 rounded-none cursor-pointer inline-flex items-center gap-1">
+                                  <Upload size={12} />
+                                  <span>Upload Image</span>
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={async (e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        const resized = await resizeCategoryAsset(e.target.files[0], 600, 600);
+                                        setCatFormImage(resized);
+                                        showToast("Image loaded!");
+                                      }
+                                    }}
+                                    className="hidden" 
+                                  />
+                                </label>
+                                <p className="text-[10px] text-slate-500 font-medium">Recommended: 600 x 600 px</p>
+                              </div>
+                            </div>
+                            <input
+                              type="text"
+                              value={catFormImage}
+                              onChange={(e) => setCatFormImage(e.target.value)}
+                              placeholder="Or enter Image URL (https://...)"
+                              className="w-full text-[11px] p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Category Banner (Optional Wide Image)
+                          </label>
+                          <div className="border border-slate-300 p-2.5 rounded-none bg-slate-50 space-y-2">
+                            <div className="flex items-center gap-3">
+                              {catFormBanner ? (
+                                <img src={catFormBanner} alt="Preview" className="w-20 h-14 object-cover border border-slate-300 rounded-none bg-white shrink-0" />
+                              ) : (
+                                <div className="w-20 h-14 border border-dashed border-slate-300 rounded-none bg-white flex items-center justify-center shrink-0 text-slate-400">
+                                  <ImageIcon size={18} />
+                                </div>
+                              )}
+                              <div className="space-y-1 flex-1">
+                                <label className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold uppercase px-3 py-1.5 rounded-none cursor-pointer inline-flex items-center gap-1">
+                                  <Upload size={12} />
+                                  <span>Upload Banner</span>
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={async (e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        const resized = await resizeCategoryAsset(e.target.files[0], 1600, 700);
+                                        setCatFormBanner(resized);
+                                        showToast("Banner loaded!");
+                                      }
+                                    }}
+                                    className="hidden" 
+                                  />
+                                </label>
+                                <p className="text-[10px] text-slate-500 font-medium">Recommended: 1600 x 700 px</p>
+                              </div>
+                            </div>
+                            <input
+                              type="text"
+                              value={catFormBanner}
+                              onChange={(e) => setCatFormBanner(e.target.value)}
+                              placeholder="Or enter Banner URL (https://...)"
+                              className="w-full text-[11px] p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3. Description */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                          Category Description
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={catFormDescription}
+                          onChange={(e) => setCatFormDescription(e.target.value)}
+                          placeholder="Write a brief description..."
+                          className="w-full text-xs font-medium p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
+                        />
+                      </div>
+
+                      {/* 4. Order & Status */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Display Order (Serial Number)
+                          </label>
                           <input
                             type="number"
-                            value={catFormSerialNumber}
-                            onChange={e => setCatFormSerialNumber(Number(e.target.value))}
-                            className="w-full text-[12px] font-bold border border-slate-200 rounded-lg p-2.5 outline-none focus:border-[#ff2f7d]"
+                            min={1}
+                            value={catFormDisplayOrder}
+                            onChange={(e) => setCatFormDisplayOrder(Number(e.target.value) || 1)}
+                            className="w-full text-xs font-bold p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
                           />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Status (Active / Inactive)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <label className={`flex-1 p-2.5 border rounded-none cursor-pointer flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                              catFormStatus ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-slate-50 border-slate-300 text-slate-600'
+                            }`}>
+                              <input type="radio" name="catStatusRadio" checked={catFormStatus === true} onChange={() => setCatFormStatus(true)} className="accent-emerald-600" />
+                              <span>Active</span>
+                            </label>
+
+                            <label className={`flex-1 p-2.5 border rounded-none cursor-pointer flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-all ${
+                              !catFormStatus ? 'bg-rose-50 border-rose-500 text-rose-800' : 'bg-slate-50 border-slate-300 text-slate-600'
+                            }`}>
+                              <input type="radio" name="catStatusRadio" checked={catFormStatus === false} onChange={() => setCatFormStatus(false)} className="accent-rose-600" />
+                              <span>Inactive</span>
+                            </label>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Buttons */}
-                      <div className="flex gap-2 pt-2 border-t border-slate-100">
+                      {/* 5. SEO Settings */}
+                      <div className="border-t border-slate-300 pt-3 space-y-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">SEO Meta Settings</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-black uppercase text-slate-600 block">SEO Title</label>
+                            <input
+                              type="text"
+                              value={catFormSeoTitle}
+                              onChange={(e) => setCatFormSeoTitle(e.target.value)}
+                              placeholder="SEO Meta Title"
+                              className="w-full text-xs font-medium p-2 border border-slate-300 rounded-none bg-white text-slate-900"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-black uppercase text-slate-600 block">SEO Description</label>
+                            <input
+                              type="text"
+                              value={catFormSeoDescription}
+                              onChange={(e) => setCatFormSeoDescription(e.target.value)}
+                              placeholder="SEO Meta Description"
+                              className="w-full text-xs font-medium p-2 border border-slate-300 rounded-none bg-white text-slate-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-300">
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingCategory(null);
-                            setIsCreatingCategory(false);
-                          }}
-                          className="flex-1 py-2.5 text-xs font-bold text-slate-400 bg-slate-50 border border-slate-100 hover:bg-slate-100 rounded-lg cursor-pointer transition-all active:scale-[0.98]"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          data-save-category="true"
                           disabled={isLoading}
                           onClick={async () => {
                             if (!catFormName.trim()) {
-                              showToast("Please enter a category name!");
+                              showToast("❌ Category Name is required!");
                               return;
                             }
-                            if (!catFormImage) {
-                              showToast("Please upload an icon image!");
-                              return;
-                            }
-                            
-                            setIsLoading(true);
-                            setCategoryValidationError(null);
-                            try {
-                              const slug = catFormName.trim().toLowerCase().replace(/\s+/g, "-");
 
-                              // Optional non-blocking pre-validation check
-                              try {
-                                const valRes = await fetch("/api/db/validate-save", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    tableName: "categories",
-                                    columns: [
-                                      "id", "name", "image", "icon_image", "short_title", 
-                                      "main_banner", "section_banner", "status", 
-                                      "serial_number", "last_edited", "slug", "updated_at"
-                                    ]
-                                  })
-                                });
-                                if (valRes.ok) {
-                                  const valData = await valRes.json();
-                                  if (valData && valData.warning) {
-                                    console.warn("Category DB validation notice:", valData.warning);
-                                  }
-                                }
-                              } catch (vErr) {
-                                console.warn("Validation endpoint warning:", vErr);
-                              }
-                              
-                              const categoryPayload = {
+                            setIsLoading(true);
+                            try {
+                              const payload = {
                                 id: editingCategory?.id,
-                                name: catFormName,
-                                slug: slug,
+                                name: catFormName.trim(),
+                                slug: catFormSlug || catFormName.trim().toLowerCase().replace(/\s+/g, '-'),
+                                image: catFormImage,
                                 iconImage: catFormImage,
-                                mainBanner: catFormMainBanner,
-                                sectionBanner: catFormSectionBanner,
+                                banner: catFormBanner,
+                                mainBanner: catFormBanner,
+                                description: catFormDescription,
+                                displayOrder: catFormDisplayOrder,
                                 status: catFormStatus,
-                                serialNumber: catFormSerialNumber,
-                                updatedAt: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                                seoTitle: catFormSeoTitle,
+                                seoDescription: catFormSeoDescription,
+                                createdAt: editingCategory?.createdAt || new Date().toLocaleDateString('en-US')
                               };
 
                               const res = await fetch('/api/categories', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(categoryPayload)
+                                body: JSON.stringify(payload)
                               });
+
+                              const resData = await res.json();
 
                               if (res.ok) {
                                 showToast(`✓ Category Saved Successfully!`);
                                 setEditingCategory(null);
-                                setIsCreatingCategory(false);
-                                setCategoryValidationError(null);
-                                // Reset fields
                                 setCatFormName('');
+                                setCatFormSlug('');
                                 setCatFormImage('');
-                                setCatFormMainBanner('');
-                                setCatFormSectionBanner('');
+                                setCatFormBanner('');
+                                setCatFormDescription('');
+                                setCatFormStatus(true);
+                                setCatFormSeoTitle('');
+                                setCatFormSeoDescription('');
+
+                                setCategoryTab('listing');
                                 loadCategoriesFromApi();
-                                forceSyncDatabase();
                               } else {
-                                const err = await res.json().catch(() => ({ message: 'Failed to save category' }));
-                                setCategoryValidationError(err);
-                                showToast(`❌ error: ${err.message || err.error || 'Failed to save category'}`);
+                                showToast(`❌ ${resData.message || resData.error || 'Failed to save category'}`);
+                                if (resData.tableExists === false) {
+                                  setDbCheckState(prev => ({
+                                    ...prev,
+                                    checking: false,
+                                    valid: false,
+                                    tableExists: false,
+                                    missingColumns: resData.missingColumns || ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
+                                    message: resData.message || 'Category table named "categories" has not been created.'
+                                  }));
+                                } else if (resData.missingColumns && resData.missingColumns.length > 0) {
+                                  setDbCheckState(prev => ({
+                                    ...prev,
+                                    checking: false,
+                                    valid: false,
+                                    tableExists: true,
+                                    missingColumns: resData.missingColumns,
+                                    message: resData.message || 'Missing required database columns.'
+                                  }));
+                                }
                               }
                             } catch (err: any) {
-                              console.error("Error saving category:", err);
-                              showToast(`❌ Category save error: ${err?.message || "Please check details and try again"}`);
+                              console.error("Save error:", err);
+                              showToast(`❌ Category save error: ${err.message || 'Please try again'}`);
                             } finally {
                               setIsLoading(false);
                             }
                           }}
-                          className={`flex-1 py-2.5 text-xs font-black text-white ${isLoading ? 'bg-slate-400' : 'bg-[#ff2f7d] hover:bg-[#e0246a]'} border-none rounded-lg cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-pink-500/10 flex items-center justify-center`}
+                          className={`px-6 py-2.5 text-xs font-black uppercase tracking-wider text-white bg-[#ff2f7d] hover:bg-[#e0246a] rounded-none border-none cursor-pointer flex items-center justify-center gap-2 transition-all ${
+                            isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                          }`}
                         >
-                          {isLoading ? <RefreshCw size={14} className="animate-spin mr-2" /> : null}
-                          {isLoading ? "Saving..." : "Save Category"}
+                          {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                          <span>{editingCategory ? "Update Category" : "Save Category"}</span>
                         </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Category List */}
-                      <div className="space-y-2.5">
-                        {[...categoriesDb].sort((a,b) => (Number(a.serialNumber) || 99) - (Number(b.serialNumber) || 99)).map(cat => {
-                          return (
-                            <div key={cat.id} className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between hover:shadow-md hover:shadow-slate-100/50 transition-all">
-                              <div className="flex items-center gap-3">
-                                <img src={cat.iconImage || cat.image} className="w-11 h-11 rounded-lg object-cover bg-slate-50 border border-slate-100" alt="" />
-                                <div className="space-y-0.5">
-                                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                    <span>{cat.name}</span>
-                                    {cat.status === false && (
-                                      <span className="px-1.5 py-0.5 text-[8px] font-black uppercase text-slate-400 bg-slate-100 rounded">Inactive</span>
-                                    )}
-                                  </h4>
-                                  <p className="text-[9px] text-[#ff2f7d] font-bold">
-                                    {cat.shortTitle || "Standard Collection"} • Sl: {cat.serialNumber || 1}
-                                  </p>
-                                  <p className="text-[8px] text-slate-400 font-medium">
-                                    Last edited: {cat.lastEdited || "Jun 12, 2026"}
-                                  </p>
-                                </div>
-                              </div>
 
-                              <div className="flex items-center gap-1.5">
-                                {/* Share Button */}
-                                <button
-                                  onClick={() => {
-                                    const slugName = cat.name.toLowerCase().replace(/\s+/g, '-');
-                                    const categoryUrl = `${window.location.origin}/category/${slugName}`;
-                                    navigator.clipboard.writeText(categoryUrl);
-                                    showToast("🔗 Category path copied to clipboard!");
-                                  }}
-                                  className="w-7 h-7 flex items-center justify-center hover:bg-slate-50 border border-slate-100 hover:text-indigo-600 rounded-lg text-slate-400 cursor-pointer transition-all bg-white"
-                                  title="Share Link"
-                                >
-                                  <Share2 size={13} />
-                                </button>
-                                
-                                {/* Edit Button */}
-                                <button
-                                  onClick={() => {
-                                    setEditingCategory(cat);
-                                    setCatFormName(cat.name);
-                                    setCatFormShortTitle(cat.shortTitle || cat.name);
-                                    setCatFormImage(cat.image);
-                                    setCatFormMainBanner(cat.mainBanner || '');
-                                    setCatFormSectionBanner(cat.sectionBanner || '');
-                                    setCatFormStatus(cat.status !== false);
-                                    setCatFormSerialNumber(cat.serialNumber || 1);
-                                  }}
-                                  className="px-2.5 py-1.5 text-[9px] font-black text-slate-700 hover:text-[#ff2f7d] bg-slate-50 border border-slate-100 hover:border-[#ff2f7d]/20 rounded-lg cursor-pointer transition-all active:scale-95"
-                                >
-                                  Edit
-                                </button>
-
-                                {/* Delete Button */}
-                                <button
-                                  onClick={() => {
-                                    setCategoryToDelete(cat);
-                                  }}
-                                  className="w-7 h-7 flex items-center justify-center hover:bg-rose-50 border border-slate-100 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer transition-all bg-white pointer-events-auto"
-                                  title="Delete"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Add Category Button at bottom */}
-                      <div className="pt-3">
                         <button
                           type="button"
                           onClick={() => {
-                            setIsCreatingCategory(true);
-                            setEditingCategory(null);
                             setCatFormName('');
-                            setCatFormShortTitle('');
+                            setCatFormSlug('');
                             setCatFormImage('');
-                            setCatFormMainBanner('');
-                            setCatFormSectionBanner('');
+                            setCatFormBanner('');
+                            setCatFormDescription('');
+                            setCatFormDisplayOrder(1);
                             setCatFormStatus(true);
-                            // Auto-increment serial number
-                            const maxSerial = categoriesDb.reduce((max, c) => Math.max(max, c.serialNumber || 0), 0);
-                            setCatFormSerialNumber(maxSerial + 1);
+                            setCatFormSeoTitle('');
+                            setCatFormSeoDescription('');
+                            showToast("Form cleared.");
                           }}
-                          className="w-full flex items-center justify-center gap-1.5 py-3 text-xs font-black uppercase text-white bg-[#ff2f7d] hover:bg-[#e0246a] border-none rounded-xl cursor-pointer shadow-md shadow-pink-500/10 transition-all active:scale-[0.98]"
+                          className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-none border border-slate-300 cursor-pointer transition-colors"
                         >
-                          <PlusCircle size={14} />
-                          <span>Add Category</span>
+                          Reset
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCategory(null);
+                            setCategoryTab('listing');
+                          }}
+                          className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 rounded-none border border-slate-300 cursor-pointer transition-colors"
+                        >
+                          Cancel
                         </button>
                       </div>
-                    </>
+                    </form>
+                  )}
+
+                  {/* TAB 2: CATEGORY LISTING TABLE - Rendered directly on full page width */}
+                  {(categoryTab === 'listing' && !editingCategory) && (
+                    <div className="w-full space-y-2">
+                      <div className="flex items-center justify-between border-b border-slate-300 pb-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                          Registered Categories ({categoriesDb.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => loadCategoriesFromApi()}
+                          className="bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-bold uppercase px-2.5 py-1 border border-slate-300 rounded-none cursor-pointer flex items-center gap-1"
+                        >
+                          <RefreshCw size={11} />
+                          <span>Refresh Table</span>
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-300 rounded-none bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-300 text-[10px] font-black uppercase tracking-wider text-slate-700">
+                              <th className="p-2.5 border-r border-slate-300 w-12 text-center">ID</th>
+                              <th className="p-2.5 border-r border-slate-300 w-14 text-center">Image</th>
+                              <th className="p-2.5 border-r border-slate-300">Category Name</th>
+                              <th className="p-2.5 border-r border-slate-300">Slug</th>
+                              <th className="p-2.5 border-r border-slate-300 text-center w-20">Status</th>
+                              <th className="p-2.5 border-r border-slate-300 text-center w-24">Display Order</th>
+                              <th className="p-2.5 border-r border-slate-300 w-28">Created Date</th>
+                              <th className="p-2.5 text-center w-24">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 text-xs">
+                            {categoriesDb.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="p-8 text-center text-slate-500 font-bold bg-white">
+                                  No categories found. Click "Add Category" above to create your first category!
+                                </td>
+                              </tr>
+                            ) : (
+                              [...categoriesDb]
+                                .sort((a,b) => (Number(a.displayOrder || a.serialNumber) || 99) - (Number(b.displayOrder || b.serialNumber) || 99))
+                                .map((cat, idx) => (
+                                  <tr key={cat.id || idx} className="hover:bg-slate-50 transition-colors">
+                                    <td className="p-2.5 border-r border-slate-300 font-mono text-[10px] text-slate-500 text-center">
+                                      #{cat.id?.substring(0, 8) || (idx + 1)}
+                                    </td>
+
+                                    <td className="p-1.5 border-r border-slate-300 text-center">
+                                      {cat.image || cat.iconImage ? (
+                                        <img 
+                                          src={cat.image || cat.iconImage} 
+                                          alt={cat.name} 
+                                          className="w-9 h-9 object-cover border border-slate-300 rounded-none mx-auto bg-white"
+                                        />
+                                      ) : (
+                                        <div className="w-9 h-9 border border-slate-300 rounded-none bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                                          <ImageIcon size={14} />
+                                        </div>
+                                      )}
+                                    </td>
+
+                                    <td className="p-2.5 border-r border-slate-300 font-bold text-slate-900">
+                                      {cat.name}
+                                    </td>
+
+                                    <td className="p-2.5 border-r border-slate-300 font-mono text-[11px] text-[#ff2f7d]">
+                                      /{cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-')}
+                                    </td>
+
+                                    <td className="p-2.5 border-r border-slate-300 text-center">
+                                      {cat.status !== false ? (
+                                        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none inline-block">
+                                          Active
+                                        </span>
+                                      ) : (
+                                        <span className="bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none inline-block">
+                                          Inactive
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    <td className="p-2.5 border-r border-slate-300 text-center font-bold text-slate-800">
+                                      #{cat.displayOrder || cat.serialNumber || 1}
+                                    </td>
+
+                                    <td className="p-2.5 border-r border-slate-300 text-[11px] text-slate-600 font-medium">
+                                      {cat.createdAt || cat.updatedAt || "Jul 25, 2026"}
+                                    </td>
+
+                                    <td className="p-2 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingCategory(cat);
+                                            setCatFormName(cat.name);
+                                            setCatFormSlug(cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'));
+                                            setCatFormImage(cat.image || cat.iconImage || '');
+                                            setCatFormBanner(cat.banner || cat.mainBanner || '');
+                                            setCatFormDescription(cat.description || '');
+                                            setCatFormDisplayOrder(cat.displayOrder || cat.serialNumber || 1);
+                                            setCatFormStatus(cat.status !== false);
+                                            setCatFormSeoTitle(cat.seoTitle || cat.name);
+                                            setCatFormSeoDescription(cat.seoDescription || cat.description || '');
+                                            setCategoryTab('add');
+                                          }}
+                                          className="p-1.5 bg-slate-100 hover:bg-[#ff2f7d] text-slate-700 hover:text-white border border-slate-300 rounded-none cursor-pointer transition-colors"
+                                          title="Edit Category"
+                                        >
+                                          <Edit size={13} />
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setCategoryToDelete(cat);
+                                          }}
+                                          className="p-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-none cursor-pointer transition-colors"
+                                          title="Delete Category"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delete Confirmation Modal Dialog */}
+                  {categoryToDelete && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                      <div className="bg-white border-2 border-slate-900 p-5 rounded-none max-w-md w-full shadow-2xl space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 bg-rose-100 border border-rose-300 rounded-none flex items-center justify-center shrink-0 text-rose-600">
+                            <Trash2 size={20} />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">Confirm Category Deletion</h3>
+                            <p className="text-xs text-slate-600 font-medium mt-1">
+                              Are you sure you want to delete category <strong className="text-slate-900">"{categoryToDelete.name}"</strong>?
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setCategoryToDelete(null)}
+                            className="px-4 py-2 text-xs font-bold uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-none border border-slate-300 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={async () => {
+                              setIsLoading(true);
+                              try {
+                                const res = await fetch(`/api/categories/${categoryToDelete.id}`, {
+                                  method: 'DELETE'
+                                });
+                                if (res.ok) {
+                                  showToast("✓ Category deleted successfully!");
+                                  setCategoryToDelete(null);
+                                  loadCategoriesFromApi();
+                                } else {
+                                  showToast("❌ Failed to delete category");
+                                }
+                              } catch (e) {
+                                showToast("❌ Delete category error");
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                            className="px-4 py-2 text-xs font-black uppercase text-white bg-rose-600 hover:bg-rose-700 rounded-none border-none cursor-pointer flex items-center gap-1.5"
+                          >
+                            {isLoading ? <RefreshCw size={12} className="animate-spin" /> : null}
+                            <span>Delete Category</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

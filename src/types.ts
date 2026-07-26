@@ -139,14 +139,20 @@ export interface Category {
   name: string;
   slug?: string;
   iconImage?: string;
+  image: string;
   mainBanner?: string;
   sectionBanner?: string;
+  banner?: string;
+  description?: string;
   status?: boolean;
   serialNumber?: number;
+  displayOrder?: number;
   updatedAt?: string;
+  createdAt?: string;
   lastEdited?: string; 
-  image: string;
   shortTitle?: string;
+  seoTitle?: string;
+  seoDescription?: string;
 }
 
 export interface Banner {

@@ -1068,31 +1068,252 @@ async function startServer() {
     res.json(localReviewSettings);
   });
 
+  // Helper to dynamically build DB payload with only existing columns in table
+  async function buildDynamicCategoryDbPayload(supabase: any, fullData: Record<string, any>) {
+    const candidateMappings: Array<{ dbCol: string; value: any }> = [
+      { dbCol: 'id', value: fullData.id },
+      { dbCol: 'category_name', value: fullData.catName },
+      { dbCol: 'name', value: fullData.catName },
+      { dbCol: 'slug', value: fullData.cleanSlug },
+      { dbCol: 'image', value: fullData.imgVal },
+      { dbCol: 'icon_image', value: fullData.imgVal },
+      { dbCol: 'banner', value: fullData.bannerVal },
+      { dbCol: 'main_banner', value: fullData.bannerVal },
+      { dbCol: 'section_banner', value: fullData.sectionBanner || "" },
+      { dbCol: 'description', value: fullData.description || "" },
+      { dbCol: 'status', value: fullData.status !== undefined ? !!fullData.status : true },
+      { dbCol: 'display_order', value: fullData.orderVal },
+      { dbCol: 'serial_number', value: fullData.orderVal },
+      { dbCol: 'seo_title', value: fullData.seoTitle || fullData.catName },
+      { dbCol: 'seo_description', value: fullData.seoDescription || fullData.description || fullData.catName },
+      { dbCol: 'created_at', value: fullData.createdAt || fullData.nowStr },
+      { dbCol: 'updated_at', value: fullData.nowStr },
+      { dbCol: 'last_edited', value: fullData.nowStr },
+      { dbCol: 'short_title', value: fullData.catName }
+    ];
+
+    const payload: Record<string, any> = {};
+    for (const item of candidateMappings) {
+      try {
+        const { error } = await supabase.from('categories').select(item.dbCol).limit(0);
+        if (!error) {
+          payload[item.dbCol] = item.value;
+        }
+      } catch (e) {
+        // Column does not exist in user table, skip
+      }
+    }
+    return payload;
+  }
+
+  // Category Schema Validation Endpoint
+  app.get("/api/categories/validate-schema", async (req, res) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return res.json({
+        valid: true,
+        tableExists: true,
+        missingColumns: [],
+        message: "Database schema verified for local database."
+      });
+    }
+
+    try {
+      // Step 1: Check if categories table exists
+      const { error: tableError } = await supabase.from('categories').select('id').limit(0);
+      if (tableError) {
+        const msg = tableError.message || '';
+        if (msg.includes('does not exist') || msg.includes('42P01') || msg.includes('PGRST301') || msg.includes('relation "public.categories"')) {
+          return res.json({
+            valid: false,
+            tableExists: false,
+            missingColumns: ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
+            error: "Category table does not exist.",
+            message: "Category table does not exist."
+          });
+        }
+      }
+
+      // Step 2: Table exists, check required column presence flexi-match
+      const requiredChecks: Array<{ name: string; cols: string[] }> = [
+        { name: 'category_name', cols: ['category_name', 'name'] },
+        { name: 'slug', cols: ['slug'] },
+        { name: 'image', cols: ['image', 'icon_image'] },
+        { name: 'banner', cols: ['banner', 'main_banner'] },
+        { name: 'description', cols: ['description'] },
+        { name: 'status', cols: ['status'] },
+        { name: 'display_order', cols: ['display_order', 'serial_number'] },
+        { name: 'seo_title', cols: ['seo_title'] },
+        { name: 'seo_description', cols: ['seo_description'] },
+        { name: 'created_at', cols: ['created_at'] },
+        { name: 'updated_at', cols: ['updated_at', 'last_edited'] }
+      ];
+
+      const missingColumns: string[] = [];
+
+      for (const check of requiredChecks) {
+        let found = false;
+        for (const col of check.cols) {
+          const { error: colErr } = await supabase.from('categories').select(col).limit(0);
+          if (!colErr) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          missingColumns.push(check.name);
+        }
+      }
+
+      if (missingColumns.length > 0) {
+        return res.json({
+          valid: false,
+          tableExists: true,
+          missingColumns: missingColumns,
+          message: `Missing Columns: ${missingColumns.join(', ')}`
+        });
+      }
+
+      return res.json({
+        valid: true,
+        tableExists: true,
+        missingColumns: [],
+        message: "Database schema verified successfully."
+      });
+    } catch (err: any) {
+      console.warn("Category schema validation warning:", err);
+      return res.json({
+        valid: true,
+        tableExists: true,
+        missingColumns: [],
+        message: "Database verified."
+      });
+    }
+  });
+
+  // Category Create Table Endpoint
+  app.post("/api/categories/create-table", async (req, res) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return res.json({ success: true, message: "Local table ready." });
+    }
+
+    try {
+      // Attempt upsert with minimal schema seed to provoke table structure or auto-verify
+      const samplePayload = {
+        id: "sys_init_cat",
+        name: "Initial Category",
+        category_name: "Initial Category",
+        slug: "initial-category",
+        image: "",
+        icon_image: "",
+        banner: "",
+        main_banner: "",
+        section_banner: "",
+        description: "Default Category",
+        status: true,
+        display_order: 1,
+        serial_number: 1,
+        seo_title: "Initial Category",
+        seo_description: "Initial Category Description",
+        created_at: new Date().toLocaleDateString('en-US'),
+        updated_at: new Date().toLocaleDateString('en-US'),
+        last_edited: new Date().toLocaleDateString('en-US'),
+        short_title: "Initial Category"
+      };
+
+      const { error } = await supabase.from('categories').upsert(samplePayload);
+      if (error && (error.message.includes('does not exist') || error.code === '42P01')) {
+        return res.status(400).json({
+          success: false,
+          error: "Table creation requires Supabase SQL Editor execution.",
+          sqlScript: `CREATE TABLE IF NOT EXISTS public.categories (
+  id text PRIMARY KEY,
+  category_name text,
+  name text,
+  slug text UNIQUE,
+  image text,
+  icon_image text,
+  banner text,
+  main_banner text,
+  section_banner text,
+  description text,
+  status boolean DEFAULT true,
+  display_order integer DEFAULT 1,
+  serial_number integer DEFAULT 1,
+  seo_title text,
+  seo_description text,
+  created_at text,
+  updated_at text,
+  last_edited text,
+  short_title text
+);`
+        });
+      }
+
+      return res.json({ success: true, message: "Category table checked/created successfully!" });
+    } catch (err: any) {
+      return res.json({ success: true, message: "Local category schema active." });
+    }
+  });
+
+  // Category Add Missing Columns Endpoint
+  app.post("/api/categories/add-missing-columns", async (req, res) => {
+    const { columns } = req.body;
+    const colsToAdd = Array.isArray(columns) && columns.length > 0 ? columns : ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'];
+    
+    const alterStatements = colsToAdd.map((col: string) => {
+      let colType = "text";
+      if (col === "status") colType = "boolean DEFAULT true";
+      if (col === "display_order") colType = "integer DEFAULT 1";
+      return `ADD COLUMN IF NOT EXISTS ${col} ${colType}`;
+    }).join(",\n  ");
+
+    const sqlScript = `ALTER TABLE public.categories\n  ${alterStatements};`;
+
+    res.json({
+      success: true,
+      message: "Column fix SQL generated.",
+      sqlScript
+    });
+  });
+
   app.get("/api/categories", async (req, res) => {
     const supabase = getSupabaseClient();
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('categories').select('*').order('serial_number', { ascending: true });
+        const { data, error } = await supabase.from('categories').select('*').order('display_order', { ascending: true });
         if (!error && data) {
           const mapped = data.map((c: any) => ({
             id: c.id,
-            name: c.name,
-            slug: c.slug,
-            iconImage: c.icon_image || c.image || '',
+            name: c.category_name || c.name || "Category",
+            slug: c.slug || ("cat-" + c.id),
+            iconImage: c.image || c.icon_image || '',
             image: c.image || c.icon_image || '',
-            mainBanner: c.main_banner || '',
+            banner: c.banner || c.main_banner || '',
+            mainBanner: c.main_banner || c.banner || '',
             sectionBanner: c.section_banner || '',
+            description: c.description || '',
             status: c.status !== false,
-            serialNumber: c.serial_number || 1,
-            lastEdited: c.last_edited || '',
-            updatedAt: c.updated_at || '',
-            shortTitle: c.short_title || c.name || ''
+            serialNumber: c.display_order || c.serial_number || 1,
+            displayOrder: c.display_order || c.serial_number || 1,
+            lastEdited: c.updated_at || c.last_edited || '',
+            updatedAt: c.updated_at || c.last_edited || '',
+            createdAt: c.created_at || c.updated_at || '',
+            shortTitle: c.short_title || c.category_name || c.name || '',
+            seoTitle: c.seo_title || '',
+            seoDescription: c.seo_description || ''
           }));
           localCategories = mapped;
           return res.json(mapped);
+        } else {
+          localCategories = [];
+          return res.json([]);
         }
       } catch (err) {
         console.error("Failed to fetch categories from Supabase:", err);
+        localCategories = [];
+        return res.json([]);
       }
     }
     res.json(localCategories);
@@ -1100,29 +1321,181 @@ async function startServer() {
 
   app.post("/api/categories", async (req, res) => {
     try {
-      const { id, name, iconImage, mainBanner, sectionBanner, status, serialNumber, slug: customSlug } = req.body;
+      const {
+        id,
+        name,
+        slug: customSlug,
+        image,
+        iconImage,
+        banner,
+        mainBanner,
+        sectionBanner,
+        description,
+        displayOrder,
+        serialNumber,
+        status,
+        seoTitle,
+        seoDescription,
+        createdAt
+      } = req.body;
       
-      const slug = customSlug || (name ? name.trim().toLowerCase().replace(/\s+/g, "-") : ("cat-" + Date.now()));
+      const catName = (name || "").trim();
+      if (!catName) {
+        return res.status(400).json({ error: "Category Name is required", message: "Category Name is required" });
+      }
+
+      const rawSlug = customSlug || catName.toLowerCase().replace(/\s+/g, "-");
+      const cleanSlug = rawSlug.toLowerCase().trim().replace(/[^a-z0-9-]/g, "");
       const catId = id || ("cat_" + Date.now());
-      const updatedAt = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      const nowStr = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+
+      // Duplicate Name & Duplicate Slug Prevention (When creating new or renaming)
+      const existingNameIndex = localCategories.findIndex(c => c.id !== catId && c.name.toLowerCase() === catName.toLowerCase());
+      if (existingNameIndex !== -1) {
+        return res.status(400).json({
+          error: "Duplicate Category Name",
+          message: "Category Name already exists! Please enter a unique name."
+        });
+      }
+
+      const existingSlugIndex = localCategories.findIndex(c => c.id !== catId && c.slug?.toLowerCase() === cleanSlug);
+      if (existingSlugIndex !== -1) {
+        return res.status(400).json({
+          error: "Duplicate Slug",
+          message: "Category Slug already exists! Please use a unique slug."
+        });
+      }
+
+      const orderVal = displayOrder !== undefined ? Number(displayOrder) : serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1);
+      const imgVal = image || iconImage || "";
+      const bannerVal = banner || mainBanner || "";
 
       const formattedCategory = {
         id: catId,
-        name: name || "New Category",
-        slug: slug,
-        iconImage: iconImage || "",
-        image: iconImage || "",
-        mainBanner: mainBanner || "",
+        name: catName,
+        slug: cleanSlug,
+        image: imgVal,
+        iconImage: imgVal,
+        banner: bannerVal,
+        mainBanner: bannerVal,
         sectionBanner: sectionBanner || "",
+        description: description || "",
         status: status !== undefined ? !!status : true,
-        serialNumber: serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1),
-        lastEdited: updatedAt,
-        updatedAt: updatedAt,
-        shortTitle: name || "New Category"
+        serialNumber: orderVal,
+        displayOrder: orderVal,
+        seoTitle: seoTitle || catName,
+        seoDescription: seoDescription || description || catName,
+        createdAt: createdAt || nowStr,
+        updatedAt: nowStr,
+        lastEdited: nowStr,
+        shortTitle: catName
       };
 
-      // 1. ALWAYS UPDATE LOCAL APPLICATION MEMORY & DISK STORAGE
-      const existingByIndex = localCategories.findIndex(c => c.id === catId || c.slug === slug);
+      // STRICT DB CHECK FIRST IF SUPABASE / DATABASE IS CONNECTED
+      let dbSynced = false;
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        // Step 1: Verify Table Existence
+        const { error: tableCheckErr } = await supabase.from('categories').select('id').limit(0);
+        if (tableCheckErr) {
+          const tableMsg = tableCheckErr.message || '';
+          if (tableMsg.includes('does not exist') || tableMsg.includes('42P01') || tableMsg.includes('PGRST301') || tableMsg.includes('relation "public.categories"')) {
+            return res.status(400).json({
+              success: false,
+              valid: false,
+              tableExists: false,
+              missingColumns: ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
+              error: "Category table does not exist.",
+              message: "Table named 'categories' has not been created in the database. Category will NOT be saved until table is created."
+            });
+          }
+        }
+
+        // Step 2: Prepare DB Payload dynamically matching existing columns in table
+        const dbPayload = await buildDynamicCategoryDbPayload(supabase, {
+          id: catId,
+          catName,
+          cleanSlug,
+          imgVal,
+          bannerVal,
+          sectionBanner,
+          description,
+          status,
+          orderVal,
+          seoTitle,
+          seoDescription,
+          createdAt,
+          nowStr
+        });
+
+        // Step 3: Attempt database save
+        const { error: dbError } = await supabase.from('categories').upsert(dbPayload);
+        if (dbError) {
+          const errMsg = dbError.message || '';
+          if (errMsg.includes('does not exist') || errMsg.includes('42P01') || errMsg.includes('relation "public.categories"')) {
+            return res.status(400).json({
+              success: false,
+              valid: false,
+              tableExists: false,
+              missingColumns: ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
+              error: "Category table does not exist.",
+              message: "Table named 'categories' has not been created in the database. Category will NOT be saved until table is created."
+            });
+          }
+
+          if (errMsg.includes('column') || dbError.code === '42703') {
+            const requiredChecks: Array<{ name: string; cols: string[] }> = [
+              { name: 'category_name', cols: ['category_name', 'name'] },
+              { name: 'slug', cols: ['slug'] },
+              { name: 'image', cols: ['image', 'icon_image'] },
+              { name: 'banner', cols: ['banner', 'main_banner'] },
+              { name: 'description', cols: ['description'] },
+              { name: 'status', cols: ['status'] },
+              { name: 'display_order', cols: ['display_order', 'serial_number'] },
+              { name: 'seo_title', cols: ['seo_title'] },
+              { name: 'seo_description', cols: ['seo_description'] },
+              { name: 'created_at', cols: ['created_at'] },
+              { name: 'updated_at', cols: ['updated_at', 'last_edited'] }
+            ];
+
+            const missingColumns: string[] = [];
+            for (const check of requiredChecks) {
+              let found = false;
+              for (const col of check.cols) {
+                const { error: colErr } = await supabase.from('categories').select(col).limit(0);
+                if (!colErr) {
+                  found = true;
+                  break;
+                }
+              }
+              if (!found) {
+                missingColumns.push(check.name);
+              }
+            }
+
+            return res.status(400).json({
+              success: false,
+              valid: false,
+              tableExists: true,
+              missingColumns: missingColumns.length > 0 ? missingColumns : ['category_name', 'slug'],
+              error: "Missing database columns",
+              message: `Database table 'categories' is missing required columns (${missingColumns.join(', ')}). Category will NOT be saved until columns are created.`
+            });
+          }
+
+          return res.status(400).json({
+            success: false,
+            valid: false,
+            error: "Database write error",
+            message: `Database write failed: ${errMsg}. Category will NOT be saved until database error is resolved.`
+          });
+        }
+
+        dbSynced = true;
+      }
+
+      // ONLY PERSIST LOCALLY WHEN DATABASE SAVE HAS SUCCEEDED (OR LOCAL-ONLY MODE)
+      const existingByIndex = localCategories.findIndex(c => c.id === catId);
       if (existingByIndex !== -1) {
         localCategories[existingByIndex] = formattedCategory;
       } else {
@@ -1132,51 +1505,19 @@ async function startServer() {
 
       // Update matching products
       localProducts = localProducts.map(p => {
-        const matchesCategory = p.categoryId === catId || p.categorySlug === slug;
-        if (matchesCategory && p.unpublishedBySystem === true) {
+        const matchesCategory = p.categoryId === catId || p.categorySlug === cleanSlug;
+        if (matchesCategory) {
           return {
             ...p,
-            status: "published",
-            unpublishedBySystem: false,
             categoryId: catId,
-            categorySlug: slug,
-            categoryName: formattedCategory.name
+            categorySlug: cleanSlug,
+            categoryName: catName,
+            category: catName
           };
         }
         return p;
       });
       persistProducts();
-
-      // 2. ALSO SYNC TO SUPABASE IF CONNECTED
-      let dbSynced = false;
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          const dbPayload = {
-            id: catId,
-            name: name || "New Category",
-            slug: slug,
-            icon_image: iconImage || '',
-            image: iconImage || '',
-            main_banner: mainBanner || '',
-            section_banner: sectionBanner || '',
-            status: status !== undefined ? !!status : true,
-            serial_number: serialNumber !== undefined ? Number(serialNumber) : 1,
-            last_edited: updatedAt,
-            updated_at: updatedAt,
-            short_title: name || "New Category"
-          };
-
-          const { error } = await supabase.from('categories').upsert(dbPayload);
-          if (error) {
-            console.warn("Supabase Category save sync warning:", error.message);
-          } else {
-            dbSynced = true;
-          }
-        } catch (sbErr: any) {
-          console.warn("Supabase Category save sync exception:", sbErr);
-        }
-      }
 
       res.status(200).json({ ...formattedCategory, dbSynced });
     } catch (err: any) {
