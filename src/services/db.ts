@@ -1,93 +1,40 @@
-import { supabase } from '../lib/supabase';
 import type { Category } from '../types';
 
 export const CategoryService = {
   async getCategories(): Promise<Category[]> {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching categories from Supabase:', error);
-      throw error;
+    const res = await fetch('/api/categories');
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Error fetching categories from API:', err);
+      throw new Error(`Failed to fetch categories: ${res.status}`);
     }
-
-    return (data || []).map(row => ({
-      id: row.id,
-      name: row.category_name,
-      slug: row.slug,
-      image: row.image || '',
-      iconImage: row.icon_image || row.image || '',
-      banner: row.banner || '',
-      mainBanner: row.banner || '',
-      sectionBanner: row.section_banner || '',
-      description: row.description || '',
-      status: row.status !== false,
-      serialNumber: row.serial_number || 0,
-      displayOrder: row.display_order || row.serial_number || 0,
-      seoTitle: row.seo_title || '',
-      seoDescription: row.seo_description || '',
-      createdAt: row.created_at || '',
-      updatedAt: row.updated_at || '',
-      lastEdited: row.last_edited || '',
-      shortTitle: row.short_title || row.category_name
-    }));
+    const data = await res.json();
+    return data || [];
   },
 
   async createCategory(category: Partial<Category>): Promise<Category> {
-    const nowStr = new Date().toISOString();
-    const payload = {
-      id: category.id || `cat_${Date.now()}`,
-      category_name: category.name || '',
-      slug: category.slug || category.name?.toLowerCase().replace(/\s+/g, '-') || '',
-      image: category.image || '',
-      icon_image: category.iconImage || category.image || '',
-      banner: category.banner || '',
-      section_banner: category.sectionBanner || '',
-      description: category.description || '',
-      status: category.status !== false,
-      display_order: category.displayOrder || 0,
-      serial_number: category.serialNumber || category.displayOrder || 0,
-      seo_title: category.seoTitle || category.name || '',
-      seo_description: category.seoDescription || category.description || '',
-      created_at: category.createdAt || nowStr,
-      updated_at: nowStr,
-      last_edited: nowStr,
-      short_title: category.shortTitle || category.name || ''
-    };
+    const res = await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(category)
+    });
 
-    const { data, error } = await supabase
-      .from('categories')
-      .upsert([payload])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating category in Supabase:', error);
-      throw error;
+    let data;
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      const rawText = await res.text();
+      console.error("Non-JSON response from server:", rawText);
+      throw new Error(`Server returned invalid response (${res.status}).`);
     }
 
-    return {
-      id: data.id,
-      name: data.category_name,
-      slug: data.slug,
-      image: data.image || '',
-      iconImage: data.icon_image || data.image || '',
-      banner: data.banner || '',
-      mainBanner: data.banner || '',
-      sectionBanner: data.section_banner || '',
-      description: data.description || '',
-      status: data.status !== false,
-      serialNumber: data.serial_number || 0,
-      displayOrder: data.display_order || 0,
-      seoTitle: data.seo_title || '',
-      seoDescription: data.seo_description || '',
-      createdAt: data.created_at || '',
-      updatedAt: data.updated_at || '',
-      lastEdited: data.last_edited || '',
-      shortTitle: data.short_title || data.category_name
-    };
+    if (!res.ok) {
+      console.error('Error creating category via API:', data);
+      throw new Error(data.message || data.error || 'Failed to create category');
+    }
+
+    return data;
   },
 
   async updateCategory(id: string, category: Partial<Category>): Promise<Category> {
@@ -95,14 +42,15 @@ export const CategoryService = {
   },
 
   async deleteCategory(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('categories')
-      .delete()
-      .eq('id', id);
+    const res = await fetch(`/api/categories/${id}`, {
+      method: 'DELETE'
+    });
 
-    if (error) {
-      console.error('Error deleting category from Supabase:', error);
-      throw error;
+    if (!res.ok) {
+      let data;
+      try { data = await res.json(); } catch(e) {}
+      console.error('Error deleting category via API:', data);
+      throw new Error(data?.message || data?.error || 'Failed to delete category');
     }
   }
 };
