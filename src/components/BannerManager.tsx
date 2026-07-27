@@ -26,7 +26,7 @@ const resizeImage = (file: File, width: number, height: number): Promise<string>
           }
           
           ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/webp", 0.9));
+          resolve(canvas.toDataURL("image/webp", 0.7));
         } else {
           resolve("");
         }
@@ -36,6 +36,24 @@ const resizeImage = (file: File, width: number, height: number): Promise<string>
     reader.readAsDataURL(file);
   });
 };
+
+
+  const uploadImageToServer = async (base64Str: string) => {
+    if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Str, folder: 'banners' })
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url;
+    } catch (e) {
+      console.error('Image upload failed:', e);
+      return base64Str;
+    }
+  };
 
 export default function BannerManager() {
   const [banners, setBanners] = useState<Banner[]>([]);

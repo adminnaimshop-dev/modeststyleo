@@ -193,7 +193,7 @@ export default function AdminPage() {
             }
             
             ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, width, height);
-            resolve(canvas.toDataURL("image/webp", 0.9));
+            resolve(canvas.toDataURL("image/webp", 0.7));
           } else {
             resolve(event.target?.result as string);
           }
@@ -206,12 +206,30 @@ export default function AdminPage() {
     });
   };
 
+  
+  const uploadImageToServer = async (base64Str: string, folder: string) => {
+    if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Str, folder })
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url;
+    } catch (e) {
+      console.error('Image upload failed:', e);
+      return base64Str; // fallback to base64
+    }
+  };
+
   const loadCategoriesFromApi = () => {
     CategoryService.getCategories()
       .then(data => {
         if (Array.isArray(data)) {
           setCategoriesDb(data);
-          localStorage.setItem('naimshop_categories', JSON.stringify(data));
+          
           const active = data.filter(c => c.status === true);
           if (active.length > 0) {
             setProdCategory(active[0].id);
@@ -3419,7 +3437,7 @@ export default function AdminPage() {
                                     accept="image/*" 
                                     onChange={async (e) => {
                                       if (e.target.files && e.target.files[0]) {
-                                        const resized = await resizeCategoryAsset(e.target.files[0], 600, 600);
+                                        const resized = await resizeCategoryAsset(e.target.files[0], 500, 500);
                                         setCatFormImage(resized);
                                         showToast("Image loaded!");
                                       }
@@ -3462,7 +3480,7 @@ export default function AdminPage() {
                                     accept="image/*" 
                                     onChange={async (e) => {
                                       if (e.target.files && e.target.files[0]) {
-                                        const resized = await resizeCategoryAsset(e.target.files[0], 1600, 700);
+                                        const resized = await resizeCategoryAsset(e.target.files[0], 1200, 500);
                                         setCatFormBanner(resized);
                                         showToast("Banner loaded!");
                                       }
@@ -3575,14 +3593,17 @@ export default function AdminPage() {
 
                             setIsLoading(true);
                             try {
+                              const finalImageUrl = await uploadImageToServer(catFormImage, 'categories');
+                              const finalBannerUrl = await uploadImageToServer(catFormBanner, 'categories/banners');
+
                               const payload = {
                                 id: editingCategory?.id,
                                 name: catFormName.trim(),
                                 slug: catFormSlug || catFormName.trim().toLowerCase().replace(/\s+/g, '-'),
-                                image: catFormImage,
-                                iconImage: catFormImage,
-                                banner: catFormBanner,
-                                mainBanner: catFormBanner,
+                                image: finalImageUrl,
+                                iconImage: finalImageUrl,
+                                banner: finalBannerUrl,
+                                mainBanner: finalBannerUrl,
                                 description: catFormDescription,
                                 displayOrder: catFormDisplayOrder,
                                 status: catFormStatus,

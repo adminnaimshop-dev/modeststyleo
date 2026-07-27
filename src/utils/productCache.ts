@@ -186,7 +186,7 @@ export async function fetchCategoriesAndCache(): Promise<Category[]> {
       if (Array.isArray(data)) {
         memoryCategoriesCache = data;
         try {
-          localStorage.setItem('naimshop_categories_cache', JSON.stringify(data));
+          
         } catch (e) {
           console.warn('Storage quota exceeded for categories');
         }
