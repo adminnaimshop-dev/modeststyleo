@@ -147,33 +147,15 @@ export default function Cart() {
     };
 
     // 1. Save to Global Order List
-    try {
-      const rawAll = localStorage.getItem('naimshop_all_orders');
-      const allOrders = rawAll ? JSON.parse(rawAll) : [];
-      if (Array.isArray(allOrders)) {
-        allOrders.push(newOrder);
-        localStorage.setItem('naimshop_all_orders', JSON.stringify(allOrders));
-      } else {
-        localStorage.setItem('naimshop_all_orders', JSON.stringify([newOrder]));
-      }
-    } catch (_) {
-      localStorage.setItem('naimshop_all_orders', JSON.stringify([newOrder]));
-    }
+    const allOrders = JSON.parse(localStorage.getItem('naimshop_all_orders') || '[]');
+    allOrders.push(newOrder);
+    localStorage.setItem('naimshop_all_orders', JSON.stringify(allOrders));
 
     // 2. Save to User Specific List if logged in
     if (loggedInUser) {
-      try {
-        const rawUser = localStorage.getItem(`orders_${loggedInUser.id}`);
-        const userOrders = rawUser ? JSON.parse(rawUser) : [];
-        if (Array.isArray(userOrders)) {
-          userOrders.push(newOrder);
-          localStorage.setItem(`orders_${loggedInUser.id}`, JSON.stringify(userOrders));
-        } else {
-          localStorage.setItem(`orders_${loggedInUser.id}`, JSON.stringify([newOrder]));
-        }
-      } catch (_) {
-        localStorage.setItem(`orders_${loggedInUser.id}`, JSON.stringify([newOrder]));
-      }
+      const userOrders = JSON.parse(localStorage.getItem(`orders_${loggedInUser.id}`) || '[]');
+      userOrders.push(newOrder);
+      localStorage.setItem(`orders_${loggedInUser.id}`, JSON.stringify(userOrders));
     }
 
     // Track Order Placement

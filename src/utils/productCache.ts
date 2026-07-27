@@ -5,6 +5,7 @@
 
 import { Product, Category } from '../types';
 import { PRODUCTS, CATEGORIES, COLLECTION_BANNERS } from '../data';
+import { CategoryService } from '../services/db';
 
 // In-memory caches with default fallbacks to ensure instant first render
 let memoryProductsCache: Product[] = [];
@@ -174,24 +175,20 @@ export async function fetchProductsAndCache(silent = false): Promise<Product[]> 
 /**
  * Fetches categories from API, updates memory and localStorage cache.
  */
-export async function fetchCategoriesAndCache(force = false): Promise<Category[]> {
-  if (isFetchingCategoriesPromise && !force) {
+export async function fetchCategoriesAndCache(): Promise<Category[]> {
+  if (isFetchingCategoriesPromise) {
     return isFetchingCategoriesPromise;
   }
 
   isFetchingCategoriesPromise = (async () => {
     try {
-      const response = await fetch('/api/categories');
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          memoryCategoriesCache = data;
-          try {
-            localStorage.setItem('naimshop_categories_cache', JSON.stringify(data));
-            localStorage.setItem('naimshop_categories', JSON.stringify(data));
-          } catch (e) {
-            console.warn('Storage quota exceeded for categories');
-          }
+      const data = await CategoryService.getCategories();
+      if (Array.isArray(data)) {
+        memoryCategoriesCache = data;
+        try {
+          localStorage.setItem('naimshop_categories_cache', JSON.stringify(data));
+        } catch (e) {
+          console.warn('Storage quota exceeded for categories');
         }
       }
     } catch (error) {

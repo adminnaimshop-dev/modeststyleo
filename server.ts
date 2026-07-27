@@ -5,9 +5,43 @@ import fs from "fs";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { PRODUCTS, CATEGORIES, MAIN_HERO, COLLECTION_BANNERS } from "./src/data";
 import { getSupabaseClient, checkSupabaseConnection, loadSupabaseConfig, saveSupabaseConfig, testSupabaseConnection, initSupabase, COMBINED_SUPABASE_SQL } from "./src/lib/supabase";
 
+function getServerSupabaseConfig(): { url: string; key: string } {
+  let url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+
+  try {
+    const configPath = path.join(process.cwd(), "local_supabase_config.json");
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (data.url) url = data.url;
+      if (data.key) key = data.key;
+    }
+  } catch (e) {
+    console.error("Error reading server Supabase config:", e);
+  }
+
+  return { url, key };
+}
+
+function getBackendSupabaseClient(): SupabaseClient | null {
+  const cfg = getServerSupabaseConfig();
+  if (!cfg.url || !cfg.key) return null;
+  try {
+    return createClient(cfg.url, cfg.key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      }
+    });
+  } catch (e) {
+    console.error("Error creating backend Supabase client:", e);
+    return null;
+  }
+}
 // Helper to ensure admin user exists in Supabase
 async function ensureAdminExists() {
   const adminEmail = "modeststyleo@gmail.com";
@@ -634,6 +668,103 @@ async function startServer() {
     }
   });
 
+  // Helper to map DB row to Product object with metadata parsing
+  function mapRowToProduct(row: any) {
+    let meta: any = {};
+    let cleanFullDesc = row.full_description || row.description || "";
+    if (cleanFullDesc && typeof cleanFullDesc === 'string' && cleanFullDesc.includes("<!--META:")) {
+      const match = cleanFullDesc.match(/<!--META:(.*?)-->/s);
+      if (match) {
+        try {
+          meta = JSON.parse(match[1]);
+          cleanFullDesc = cleanFullDesc.replace(/<!--META:.*?-->/s, "").trim();
+        } catch (e) {
+          console.error("Error parsing embedded metadata:", e);
+        }
+      }
+    }
+
+    let sizes = row.sizes;
+    if (typeof sizes === 'string') {
+      try { sizes = JSON.parse(sizes); } catch(e) { sizes = ["M", "L", "XL", "XXL"]; }
+    }
+    if (!Array.isArray(sizes)) {
+      sizes = ["M", "L", "XL", "XXL"];
+    }
+
+    let images = row.images;
+    if (typeof images === 'string') {
+      try { images = JSON.parse(images); } catch(e) { images = [row.image].filter(Boolean); }
+    }
+    if (!Array.isArray(images)) {
+      images = row.image ? [row.image] : [];
+    }
+
+    const prodName = row.product_name || row.name || row.title || "Product";
+
+    return {
+      id: row.id,
+      title: row.title || prodName,
+      name: prodName,
+      product_name: prodName,
+      product_slug: row.product_slug || "",
+      price: Number(row.price) || Number(row.regular_price) || 0,
+      oldPrice: row.old_price !== null && row.old_price !== undefined ? Number(row.old_price) : (row.regular_price ? Number(row.regular_price) : undefined),
+      discountPrice: row.discount_price !== null && row.discount_price !== undefined ? Number(row.discount_price) : (row.sale_price ? Number(row.sale_price) : undefined),
+      categoryId: row.category_id || "",
+      categorySlug: row.category_slug || "",
+      categoryName: row.category_name || "",
+      images: images,
+      image: row.image || (images.length > 0 ? images[0] : ""),
+      stock: row.stock || (row.stock_qty !== null && row.stock_qty !== undefined ? `${row.stock_qty} in stock` : "In Stock"),
+      status: row.status || "active",
+      views: Number(row.views) || 0,
+      rating: Number(row.rating) || 4.8,
+      sku: row.sku || "",
+      fabric: row.fabric || "",
+      gsm: row.gsm || "",
+      fit: row.fit || "",
+      care: row.care || "",
+      sizes: sizes,
+      shortDescription: row.short_description || "",
+      fullDescription: cleanFullDesc,
+      description: row.description || cleanFullDesc,
+      isFlashSale: !!row.is_flash_sale,
+      isDeleted: !!row.is_deleted,
+      brand: row.brand || "",
+      ...meta
+    };
+  }
+
+  // Fetch all products live from Supabase
+  async function fetchProductsFromSupabase() {
+    const supabase = getBackendSupabaseClient();
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Supabase select products error:", error.message);
+        return null;
+      }
+
+      if (data) {
+        const activeData = data.filter((row: any) => !row.is_deleted && row.status !== 'Inactive' && row.status !== 'deleted');
+        const mappedProducts = activeData.map(mapRowToProduct);
+        localProducts = mappedProducts;
+        persistProducts();
+        return mappedProducts;
+      }
+    } catch (err: any) {
+      console.error("Error fetching products from Supabase:", err.message);
+    }
+    return null;
+  }
+
   // Bulk Product Upload with cell-by-cell validated rows
   app.post("/api/products/bulk", async (req, res) => {
     try {
@@ -645,18 +776,20 @@ async function startServer() {
       const importedProducts = [];
 
       for (const p of products) {
+        const prodName = p.name || p.title || "Bulk Imported Product";
         const newProduct = {
           id: "p_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
-          title: p.name || p.title || "Bulk Imported Product",
-          name: p.name || p.title || "Bulk Imported Product",
+          title: prodName,
+          name: prodName,
+          product_name: prodName,
           price: Number(p.price) || 0,
           oldPrice: p.regularPrice ? Number(p.regularPrice) : (p.price ? Math.round(Number(p.price) * 1.25) : undefined),
           discountPrice: Number(p.price) || 0,
-          categoryId: p.categoryId || "1",
-          categorySlug: p.categorySlug || (p.category ? p.category.toLowerCase().replace(/\s+/g, '-') : "saree"),
-          categoryName: p.category || "Saree",
+          categoryId: p.categoryId || "",
+          categorySlug: p.categorySlug || (p.category ? p.category.toLowerCase().replace(/\s+/g, '-') : "t-shirt"),
+          categoryName: p.category || "T-Shirt",
           images: p.galleryImages ? p.galleryImages.split(',').map((img: string) => img.trim()).filter(Boolean) : (p.productImage ? [p.productImage] : []),
-          image: p.productImage || "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&q=80",
+          image: p.productImage || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=400&q=80",
           stock: Number(p.stockQuantity) > 0 ? "In Stock" : "Out of Stock",
           status: "published",
           views: 2200,
@@ -681,17 +814,24 @@ async function startServer() {
           unpublishedBySystem: false
         };
 
-        const supabase = getSupabaseClient();
+        const supabase = getBackendSupabaseClient();
         if (supabase) {
           try {
+            let catId = p.categoryId || null;
+            if (catId && !localCategories.some(c => c.id === catId)) {
+              catId = null;
+            }
+
             await supabase.from('products').upsert({
               id: newProduct.id,
-              title: newProduct.title || newProduct.name,
-              name: newProduct.name || newProduct.title,
+              product_name: newProduct.name,
+              product_slug: newProduct.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+              title: newProduct.title,
+              name: newProduct.name,
               price: newProduct.price || 0,
               old_price: newProduct.oldPrice || null,
               discount_price: newProduct.discountPrice || null,
-              category_id: newProduct.categoryId || '',
+              category_id: catId,
               category_slug: newProduct.categorySlug || '',
               category_name: newProduct.categoryName || '',
               images: newProduct.images || [],
@@ -708,9 +848,9 @@ async function startServer() {
               sizes: newProduct.sizes || [],
               short_description: newProduct.shortDescription || '',
               full_description: newProduct.fullDescription || '',
-              is_flash_sale: newProduct.isFlashSale ? true : false,
-              is_deleted: newProduct.isDeleted ? true : false,
-              unpublished_by_system: newProduct.unpublishedBySystem ? true : false
+              is_flash_sale: false,
+              is_deleted: false,
+              unpublished_by_system: false
             });
           } catch (dbErr: any) {
             console.error("Supabase bulk upload product insert failed:", dbErr.message);
@@ -719,9 +859,14 @@ async function startServer() {
 
         localProducts.unshift(newProduct);
         importedProducts.push(newProduct);
+
+        if (newProduct.categoryName) {
+          await ensureCategoryExists(newProduct.categoryName, newProduct.image);
+        }
       }
 
       persistProducts();
+      await fetchProductsFromSupabase();
       res.status(201).json({ success: true, count: importedProducts.length, products: importedProducts });
     } catch (err: any) {
       console.error("Error bulk uploading products:", err);
@@ -729,9 +874,17 @@ async function startServer() {
     }
   });
 
-  // Fetch all products
-  app.get("/api/products", (req, res) => {
-    res.json(localProducts);
+  // Fetch all products from database
+  app.get("/api/products", async (req, res) => {
+    try {
+      const dbProducts = await fetchProductsFromSupabase();
+      if (dbProducts) {
+        return res.json(dbProducts);
+      }
+    } catch (e: any) {
+      console.error("Error in GET /api/products:", e.message);
+    }
+    res.json(localProducts.filter(p => !p.isDeleted && p.status !== 'Inactive'));
   });
 
   // Create/Add new product from Admin
@@ -758,79 +911,114 @@ async function startServer() {
         sizes,
         shortDescription,
         fullDescription,
+        description,
         isFlashSale
       } = req.body;
 
-      const newProduct = {
-        id: "p_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
-        title: title || name || "New Premium Product",
-        name: title || name || "New Premium Product", 
-        price: Number(price) || 0,
-        oldPrice: oldPrice ? Number(oldPrice) : undefined,
-        discountPrice: price ? Number(price) : undefined,
-        categoryId: categoryId || "1",
-        categorySlug: categorySlug || "saree",
-        categoryName: categoryName || "Saree",
-        images: Array.isArray(images) ? images : (image ? [image] : []),
-        image: image || (Array.isArray(images) && images.length > 0 ? images[0] : "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=400&q=80"),
-        stock: stock || "In Stock",
-        status: status || "active",
-        views: Number(views) || 2200,
-        rating: 4.8,
-        sku: sku || "SKU-TEMP",
-        fabric: fabric || "Premium Cotton",
-        gsm: gsm || "160 GSM",
-        fit: fit || "Regular Fit",
-        care: care || "Normal Wash",
-        sizes: sizes || ["M", "L", "XL", "XXL"],
-        shortDescription: shortDescription || "Beautiful premium model crafted with perfection.",
-        fullDescription: fullDescription || "Exquisite detailing and high-quality premium threadwork ensure extreme comfort and durability.",
-        isFlashSale: !!isFlashSale,
-        isDeleted: false,
-        ...req.body
-      };
+      const productName = title || name || req.body.product_name || "New Premium Product";
+      const productSlug = req.body.slug || req.body.product_slug || productName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          await supabase.from('products').insert({
-            id: newProduct.id,
-            title: newProduct.title || newProduct.name,
-            name: newProduct.name || newProduct.title,
-            price: newProduct.price || 0,
-            old_price: newProduct.oldPrice || null,
-            discount_price: newProduct.discountPrice || null,
-            category_id: newProduct.categoryId || '',
-            category_slug: newProduct.categorySlug || '',
-            category_name: newProduct.categoryName || '',
-            images: newProduct.images || [],
-            image: newProduct.image || '',
-            stock: newProduct.stock || 'In Stock',
-            status: newProduct.status || 'published',
-            views: newProduct.views || 0,
-            rating: newProduct.rating || 4.8,
-            sku: newProduct.sku || '',
-            fabric: newProduct.fabric || '',
-            gsm: newProduct.gsm || '',
-            fit: newProduct.fit || '',
-            care: newProduct.care || '',
-            sizes: newProduct.sizes || [],
-            short_description: newProduct.shortDescription || '',
-            full_description: newProduct.fullDescription || '',
-            is_flash_sale: newProduct.isFlashSale ? true : false,
-            is_deleted: newProduct.isDeleted ? true : false,
-            unpublished_by_system: newProduct.unpublishedBySystem ? true : false
-          });
-        } catch (dbErr: any) {
-          console.error("Supabase product insert failed:", dbErr.message);
+      let categoryIdValid = categoryId || null;
+      if (categoryIdValid) {
+        const catExists = localCategories.some(c => c.id === categoryIdValid);
+        if (!catExists) {
+          const matched = localCategories.find(c => c.name.toLowerCase() === (categoryName || '').toLowerCase());
+          categoryIdValid = matched ? matched.id : null;
+        }
+      } else if (categoryName) {
+        const matched = localCategories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+        categoryIdValid = matched ? matched.id : null;
+      }
+
+      // Collect all extra metadata fields
+      const extraFields: Record<string, any> = {};
+      const metaKeys = [
+        'colors', 'colorsList', 'variants', 'highlights', 'returnPolicy', 'qnas',
+        'trustBadges', 'deliveryInsideDhaka', 'deliveryOutsideDhaka', 'deliveryTime',
+        'shareSettings', 'reviewSettings', 'relatedProductMode', 'manualRelatedIds',
+        'packageContents', 'sizeGuideImage', 'customerGallery', 'whyChooseUs',
+        'brandInfo', 'careInstructions', 'recentBoughtCount', 'peopleViewingCount',
+        'offersInfo', 'seoTitle', 'seoDescription', 'focusKeywords', 'tags',
+        'categoryMainBanner', 'categorySectionBanner'
+      ];
+      for (const k of metaKeys) {
+        if (req.body[k] !== undefined) {
+          extraFields[k] = req.body[k];
         }
       }
 
-      localProducts.unshift(newProduct);
-      persistProducts();
-      
+      const rawFullDesc = fullDescription || description || "Exquisite detailing and high-quality premium threadwork ensure extreme comfort and durability.";
+      const fullDescWithMeta = Object.keys(extraFields).length > 0 
+        ? `${rawFullDesc}\n<!--META:${JSON.stringify(extraFields)}-->`
+        : rawFullDesc;
+
+      const newProdId = "p_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+      const imgList = Array.isArray(images) ? images : (image ? [image] : []);
+      const mainImg = image || (imgList.length > 0 ? imgList[0] : "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500");
+
+      const supabaseRow = {
+        id: newProdId,
+        product_name: productName,
+        product_slug: productSlug,
+        name: productName,
+        title: productName,
+        category_id: categoryIdValid,
+        category_slug: categorySlug || (categoryName ? categoryName.toLowerCase().replace(/\s+/g, '-') : "t-shirt"),
+        category_name: categoryName || "T-Shirt",
+        brand: req.body.brand || "Naim Shop",
+        description: shortDescription || productName,
+        short_description: shortDescription || productName,
+        full_description: fullDescWithMeta,
+        price: Number(price) || 0,
+        regular_price: oldPrice ? Number(oldPrice) : Number(price) || 0,
+        old_price: oldPrice ? Number(oldPrice) : null,
+        sale_price: price ? Number(price) : null,
+        discount_price: price ? Number(price) : null,
+        stock_qty: typeof stock === 'number' ? stock : (parseInt(stock) || 100),
+        stock: typeof stock === 'string' ? stock : "In Stock",
+        sku: sku || "SKU-" + Date.now(),
+        status: status || "active",
+        images: imgList,
+        image: mainImg,
+        fabric: fabric || "Premium Cotton",
+        gsm: gsm || "180 GSM",
+        fit: fit || "Regular Fit",
+        care: care || "Normal Wash",
+        sizes: Array.isArray(sizes) ? sizes : ["M", "L", "XL", "XXL"],
+        views: Number(views) || 2200,
+        rating: 4.8,
+        is_flash_sale: !!isFlashSale,
+        is_deleted: false,
+        unpublished_by_system: false
+      };
+
+      const supabase = getBackendSupabaseClient();
+      if (!supabase) {
+        console.error("❌ getBackendSupabaseClient returned null!");
+        return res.status(500).json({ error: "Database connection unavailable" });
+      }
+
+      const { data: insertedData, error: dbErr } = await supabase.from('products').insert([supabaseRow]).select();
+      if (dbErr) {
+        console.error("❌ Supabase Product Insert Error:", dbErr);
+        return res.status(500).json({ 
+          error: `Database Insert Failed: ${dbErr.message}`,
+          details: dbErr 
+        });
+      }
+      console.log("✅ Product saved to Supabase successfully:", insertedData?.[0]?.id);
+
+      if (categoryName) {
+        await ensureCategoryExists(categoryName, mainImg);
+      }
+
+      // Re-fetch all products directly from database
+      const dbProducts = await fetchProductsFromSupabase();
+      const createdProd = mapRowToProduct(supabaseRow);
+
       res.status(201).json({
-        ...newProduct,
+        ...createdProd,
+        products: dbProducts || localProducts,
         dbStatus: {
           tableName: "products",
           checkingRequiredColumns: true,
@@ -840,7 +1028,7 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error("Error in POST /api/products:", err);
-      res.status(500).json({ error: "⚠️ Product was not saved. Unexpected error occurred." });
+      res.status(500).json({ error: "⚠️ Product was not saved. Unexpected database error occurred." });
     }
   });
 
@@ -848,92 +1036,117 @@ async function startServer() {
   app.put("/api/products/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const index = localProducts.findIndex(p => p.id === id);
-      if (index === -1) {
-        return res.status(404).json({ error: "Product not found" });
+      const { 
+        title, name, price, oldPrice, categoryId, categorySlug, 
+        categoryName, images, image, stock, status, views, sku, fabric, 
+        gsm, fit, care, sizes, shortDescription, fullDescription, description, isFlashSale 
+      } = req.body;
+
+      const productName = title || name || req.body.product_name || "Updated Product";
+      const productSlug = req.body.slug || req.body.product_slug || productName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+      let categoryIdValid = categoryId || null;
+      if (categoryIdValid) {
+        const catExists = localCategories.some(c => c.id === categoryIdValid);
+        if (!catExists) categoryIdValid = null;
+      } else if (categoryName) {
+        const matched = localCategories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
+        categoryIdValid = matched ? matched.id : null;
       }
 
-      const updatedProduct = {
-        ...localProducts[index],
-        ...req.body,
-        price: req.body.price !== undefined ? Number(req.body.price) : localProducts[index].price,
-        oldPrice: req.body.oldPrice !== undefined ? Number(req.body.oldPrice) : localProducts[index].oldPrice,
-        views: req.body.views !== undefined ? Number(req.body.views) : localProducts[index].views,
+      const extraFields: Record<string, any> = {};
+      const metaKeys = [
+        'colors', 'colorsList', 'variants', 'highlights', 'returnPolicy', 'qnas',
+        'trustBadges', 'deliveryInsideDhaka', 'deliveryOutsideDhaka', 'deliveryTime',
+        'shareSettings', 'reviewSettings', 'relatedProductMode', 'manualRelatedIds',
+        'packageContents', 'sizeGuideImage', 'customerGallery', 'whyChooseUs',
+        'brandInfo', 'careInstructions', 'recentBoughtCount', 'peopleViewingCount',
+        'offersInfo', 'seoTitle', 'seoDescription', 'focusKeywords', 'tags',
+        'categoryMainBanner', 'categorySectionBanner'
+      ];
+      for (const k of metaKeys) {
+        if (req.body[k] !== undefined) {
+          extraFields[k] = req.body[k];
+        }
+      }
+
+      const rawFullDesc = fullDescription || description || "";
+      const fullDescWithMeta = Object.keys(extraFields).length > 0 
+        ? `${rawFullDesc}\n<!--META:${JSON.stringify(extraFields)}-->`
+        : rawFullDesc;
+
+      const imgList = Array.isArray(images) ? images : (image ? [image] : []);
+      const mainImg = image || (imgList.length > 0 ? imgList[0] : "");
+
+      const updateRow: any = {
+        product_name: productName,
+        product_slug: productSlug,
+        name: productName,
+        title: productName,
+        category_id: categoryIdValid,
+        category_slug: categorySlug || (categoryName ? categoryName.toLowerCase().replace(/\s+/g, '-') : ""),
+        category_name: categoryName || "",
+        brand: req.body.brand || "Naim Shop",
+        description: shortDescription || productName,
+        short_description: shortDescription || productName,
+        full_description: fullDescWithMeta,
+        price: Number(price) || 0,
+        regular_price: oldPrice ? Number(oldPrice) : Number(price) || 0,
+        old_price: oldPrice ? Number(oldPrice) : null,
+        sale_price: price ? Number(price) : null,
+        discount_price: price ? Number(price) : null,
+        stock_qty: typeof stock === 'number' ? stock : (parseInt(stock) || 100),
+        stock: typeof stock === 'string' ? stock : "In Stock",
+        status: status || "active",
+        images: imgList,
+        image: mainImg,
+        fabric: fabric || "",
+        gsm: gsm || "",
+        fit: fit || "",
+        care: care || "",
+        sizes: Array.isArray(sizes) ? sizes : ["M", "L", "XL", "XXL"],
+        is_flash_sale: !!isFlashSale
       };
 
-      const supabase = getSupabaseClient();
+      if (sku) updateRow.sku = sku;
+      if (views !== undefined) updateRow.views = Number(views);
+
+      const supabase = getBackendSupabaseClient();
       if (supabase) {
-        try {
-          await supabase.from('products').update({
-            title: updatedProduct.title || updatedProduct.name,
-            name: updatedProduct.name || updatedProduct.title,
-            price: updatedProduct.price || 0,
-            old_price: updatedProduct.oldPrice || null,
-            discount_price: updatedProduct.discountPrice || null,
-            category_id: updatedProduct.categoryId || '',
-            category_slug: updatedProduct.categorySlug || '',
-            category_name: updatedProduct.categoryName || '',
-            images: updatedProduct.images || [],
-            image: updatedProduct.image || '',
-            stock: updatedProduct.stock || 'In Stock',
-            status: updatedProduct.status || 'published',
-            views: updatedProduct.views || 0,
-            rating: updatedProduct.rating || 4.8,
-            sku: updatedProduct.sku || '',
-            fabric: updatedProduct.fabric || '',
-            gsm: updatedProduct.gsm || '',
-            fit: updatedProduct.fit || '',
-            care: updatedProduct.care || '',
-            sizes: updatedProduct.sizes || [],
-            short_description: updatedProduct.shortDescription || '',
-            full_description: updatedProduct.fullDescription || '',
-            is_flash_sale: updatedProduct.isFlashSale ? true : false,
-            is_deleted: updatedProduct.isDeleted ? true : false,
-            unpublished_by_system: updatedProduct.unpublishedBySystem ? true : false
-          }).eq('id', id);
-        } catch (dbErr: any) {
-          console.error("Supabase Product update failed:", dbErr.message);
+        const { error: dbErr } = await supabase.from('products').update(updateRow).eq('id', id);
+        if (dbErr) {
+          console.error("❌ Supabase Product Update Error:", dbErr);
+          return res.status(500).json({ error: `Database Update Failed: ${dbErr.message}` });
         }
       }
 
-      localProducts[index] = updatedProduct;
-      persistProducts();
-      
-      res.json({
-        ...localProducts[index],
-        dbStatus: {
-          tableName: "products",
-          checkingRequiredColumns: true,
-          availableColumns: REQUIRED_DB_SCHEMAS.products,
-          missingColumns: []
-        }
-      });
+      await fetchProductsFromSupabase();
+      res.json({ success: true, message: "Product updated in database successfully." });
     } catch (err: any) {
       console.error("Error in PUT /api/products:", err);
-      res.status(500).json({ error: "⚠ Product was not saved. Unexpected database update error." });
+      res.status(500).json({ error: "Product was not saved. Database update error." });
     }
   });
 
   // Delete product API - Soft delete as requested
   app.delete("/api/products/:id", async (req, res) => {
     const { id } = req.params;
+    const supabase = getBackendSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.from('products').update({ is_deleted: true, status: 'Inactive' }).eq('id', id);
+      } catch (dbErr: any) {
+        console.error("Supabase Product soft delete failed:", dbErr.message);
+      }
+    }
     const index = localProducts.findIndex(p => p.id === id);
     if (index !== -1) {
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          await supabase.from('products').update({ is_deleted: true, status: 'Inactive' }).eq('id', id);
-        } catch (dbErr: any) {
-          console.error("Supabase Product soft delete failed:", dbErr.message);
-        }
-      }
       localProducts[index].isDeleted = true;
       localProducts[index].status = "Inactive";
       persistProducts();
-      res.json({ success: true, message: "Product deleted successfully (soft delete)" });
-    } else {
-      res.status(404).json({ error: "Product not found" });
     }
+    await fetchProductsFromSupabase();
+    res.json({ success: true, message: "Product deleted successfully (soft delete)" });
   });
 
   // View count increment API
@@ -1068,16 +1281,15 @@ async function startServer() {
     res.json(localReviewSettings);
   });
 
-  // Fast helper to attempt category upsert to Supabase with dynamic column detection
+  // Fast helper to attempt category upsert to Supabase while auto-stripping missing optional columns
   async function upsertCategoryToSupabase(supabase: any, fullData: Record<string, any>) {
-    const candidateMap: Record<string, any> = {
+    const payload: Record<string, any> = {
+      id: fullData.id,
       category_name: fullData.catName,
-      name: fullData.catName,
       slug: fullData.cleanSlug,
       image: fullData.imgVal,
       icon_image: fullData.imgVal,
       banner: fullData.bannerVal,
-      main_banner: fullData.bannerVal,
       section_banner: fullData.sectionBanner || "",
       description: fullData.description || "",
       status: fullData.status !== undefined ? !!fullData.status : true,
@@ -1091,90 +1303,35 @@ async function startServer() {
       short_title: fullData.catName
     };
 
-    // Discover valid columns in categories table
-    let validCols: string[] = [];
-    try {
-      const { data: sampleRow, error: sampleErr } = await supabase.from('categories').select('*').limit(1);
-      if (!sampleErr && sampleRow && sampleRow.length > 0) {
-        validCols = Object.keys(sampleRow[0]);
-      }
-    } catch (_) {}
-
-    if (validCols.length === 0) {
-      const allCandidates = Object.keys(candidateMap);
-      for (const col of allCandidates) {
-        try {
-          const { error } = await supabase.from('categories').select(col).limit(0);
-          if (!error) validCols.push(col);
-        } catch (_) {}
-      }
-    }
-
-    // Check if 'id' column exists
-    if (!validCols.includes('id')) {
-      try {
-        const { error } = await supabase.from('categories').select('id').limit(0);
-        if (!error) validCols.push('id');
-      } catch (_) {}
-    }
-
-    // Build payload using only valid columns
-    const payload: Record<string, any> = {};
-    if (validCols.length > 0) {
-      for (const col of validCols) {
-        if (col === 'id') {
-          payload['id'] = fullData.id;
-        } else if (candidateMap[col] !== undefined) {
-          payload[col] = candidateMap[col];
-        }
-      }
-    } else {
-      payload.id = fullData.id;
-      payload.category_name = fullData.catName;
-      payload.name = fullData.catName;
-      payload.slug = fullData.cleanSlug;
-      payload.image = fullData.imgVal;
-      payload.banner = fullData.bannerVal;
-      payload.description = fullData.description || "";
-      payload.status = fullData.status !== undefined ? !!fullData.status : true;
-      payload.display_order = fullData.orderVal;
-      payload.updated_at = fullData.nowStr;
-    }
-
-    for (let attempt = 0; attempt < 15; attempt++) {
+    for (let attempt = 0; attempt < 10; attempt++) {
       const { error } = await supabase.from('categories').upsert(payload);
       if (!error) {
         return { success: true, error: null };
       }
 
       const errMsg = error.message || '';
-      if (errMsg.includes('does not exist') && (errMsg.includes('42P01') || errMsg.includes('PGRST301') || errMsg.includes('relation "public.categories"'))) {
-        return { success: false, tableExists: false, error };
-      }
+      const errCode = error.code || '';
 
-      // Handle ID type mismatch for integer primary keys in PostgreSQL
-      if (error.code === '22P02' || errMsg.includes('invalid input syntax for type integer') || errMsg.includes('invalid input syntax for integer')) {
-        if (typeof payload.id === 'string' && payload.id.startsWith('cat_')) {
-          const numId = Number(payload.id.replace('cat_', ''));
-          if (!isNaN(numId) && numId > 0) {
-            payload.id = numId;
-          } else {
-            delete payload.id;
-          }
-          continue;
-        }
+      // Check if table itself is missing (42P01 = undefined_table, PGRST301 = missing table)
+      const isTableMissing = errCode === '42P01' || errCode === 'PGRST301' || 
+                             (errMsg.includes('relation "public.categories" does not exist')) ||
+                             (errMsg.includes('table') && errMsg.includes('does not exist') && !errMsg.includes('column'));
+
+      if (isTableMissing) {
+        return { success: false, tableExists: false, error };
       }
 
       // Match missing column name from error
       const colMatch = errMsg.match(/column ['"]?([a-zA-Z0-9_]+)['"]? (?:of relation|in the schema cache|does not exist)/i) ||
                        errMsg.match(/Could not find the ['"]?([a-zA-Z0-9_]+)['"]? column/i) ||
-                       errMsg.match(/['"]([a-zA-Z0-9_]+)['"] column/i);
+                       errMsg.match(/['"]([a-zA-Z0-9_]+)['"] column/i) ||
+                       errMsg.match(/['"]([a-zA-Z0-9_]+)['"]/i);
 
       if (colMatch && colMatch[1]) {
         const missingCol = colMatch[1];
         if (payload[missingCol] !== undefined) {
           delete payload[missingCol];
-          continue;
+          continue; // Retry with stripped payload
         }
       }
 
@@ -1182,6 +1339,60 @@ async function startServer() {
     }
 
     return { success: false, tableExists: true, error: { message: "Could not save category to database." } };
+  }
+
+  // Ensure category exists in database and local cache when products are created/imported
+  async function ensureCategoryExists(catName: string, imgUrl?: string) {
+    if (!catName || !catName.trim()) return;
+    const nameTrimmed = catName.trim();
+    const cleanSlug = nameTrimmed.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const existing = localCategories.find(c => c.name.toLowerCase() === nameTrimmed.toLowerCase() || c.slug === cleanSlug);
+    if (!existing) {
+      const catId = "cat_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+      const nowStr = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      const formattedCategory = {
+        id: catId,
+        name: nameTrimmed,
+        slug: cleanSlug,
+        image: imgUrl || "",
+        iconImage: imgUrl || "",
+        banner: "",
+        mainBanner: "",
+        sectionBanner: "",
+        description: "",
+        status: true,
+        serialNumber: localCategories.length + 1,
+        displayOrder: localCategories.length + 1,
+        seoTitle: nameTrimmed,
+        seoDescription: nameTrimmed,
+        createdAt: nowStr,
+        updatedAt: nowStr,
+        lastEdited: nowStr,
+        shortTitle: nameTrimmed
+      };
+
+      localCategories.push(formattedCategory);
+      persistCategories();
+
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        await upsertCategoryToSupabase(supabase, {
+          id: catId,
+          catName: nameTrimmed,
+          cleanSlug,
+          imgVal: imgUrl || "",
+          bannerVal: "",
+          sectionBanner: "",
+          description: "",
+          status: true,
+          orderVal: localCategories.length,
+          seoTitle: nameTrimmed,
+          seoDescription: nameTrimmed,
+          createdAt: nowStr,
+          nowStr
+        });
+      }
+    }
   }
 
   // Category Schema Validation Endpoint
@@ -1329,6 +1540,9 @@ async function startServer() {
         });
       }
 
+      // Immediately delete sample payload so database contains zero artificial/demo categories
+      await supabase.from('categories').delete().eq('id', 'sys_init_cat');
+
       return res.json({ success: true, message: "Category table checked/created successfully!" });
     } catch (err: any) {
       return res.json({ success: true, message: "Local category schema active." });
@@ -1368,7 +1582,7 @@ async function startServer() {
           error = fallback.error;
         }
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           const mapped = data.map((c: any) => ({
             id: String(c.id || ''),
             name: c.category_name || c.name || "Category",
@@ -1389,39 +1603,17 @@ async function startServer() {
             seoTitle: c.seo_title || '',
             seoDescription: c.seo_description || ''
           }));
-
-          // Merge Supabase categories with localCategories so local images and custom data are preserved
-          const mergedList = [...localCategories];
-          mapped.forEach((sbCat: any) => {
-            const idx = mergedList.findIndex(
-              lc => lc.id === sbCat.id || (lc.slug && sbCat.slug && lc.slug.toLowerCase() === sbCat.slug.toLowerCase())
-            );
-            if (idx !== -1) {
-              mergedList[idx] = {
-                ...mergedList[idx],
-                ...sbCat,
-                image: sbCat.image || mergedList[idx].image || '',
-                iconImage: sbCat.iconImage || mergedList[idx].iconImage || '',
-                banner: sbCat.banner || mergedList[idx].banner || '',
-                mainBanner: sbCat.mainBanner || mergedList[idx].mainBanner || '',
-                description: sbCat.description || mergedList[idx].description || ''
-              };
-            } else {
-              mergedList.push(sbCat);
-            }
-          });
-
-          localCategories = mergedList;
+          localCategories = mapped;
           persistCategories();
-          return res.json(localCategories);
-        } else if (!error && data && data.length === 0) {
-          // If Supabase table is currently empty, return localCategories fallback
-          if (localCategories && localCategories.length > 0) {
-            return res.json(localCategories);
-          }
+          return res.json(mapped);
+        } else {
+          localCategories = [];
+          return res.json([]);
         }
       } catch (err) {
         console.error("Failed to fetch categories from Supabase:", err);
+        localCategories = [];
+        return res.json([]);
       }
     }
     res.json(localCategories);
@@ -1499,7 +1691,51 @@ async function startServer() {
         shortTitle: catName
       };
 
-      // Always persist locally first so categories are never lost
+      // STRICT DB CHECK FIRST IF SUPABASE / DATABASE IS CONNECTED
+      let dbSynced = false;
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const dbResult = await upsertCategoryToSupabase(supabase, {
+          id: catId,
+          catName,
+          cleanSlug,
+          imgVal,
+          bannerVal,
+          sectionBanner,
+          description,
+          status,
+          orderVal,
+          seoTitle,
+          seoDescription,
+          createdAt,
+          nowStr
+        });
+
+        if (!dbResult.success) {
+          if (dbResult.tableExists === false) {
+            return res.status(400).json({
+              success: false,
+              valid: false,
+              tableExists: false,
+              missingColumns: ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
+              error: "Category table does not exist.",
+              message: "Table named 'categories' has not been created in the database. Category will NOT be saved until table is created."
+            });
+          }
+
+          return res.status(400).json({
+            success: false,
+            valid: false,
+            tableExists: true,
+            error: "Database write error",
+            message: `Database write failed: ${dbResult.error?.message || 'Failed to save category to database'}. Category will NOT be saved until database error is resolved.`
+          });
+        }
+
+        dbSynced = true;
+      }
+
+      // ONLY PERSIST LOCALLY WHEN DATABASE SAVE HAS SUCCEEDED (OR LOCAL-ONLY MODE)
       const existingByIndex = localCategories.findIndex(c => c.id === catId);
       if (existingByIndex !== -1) {
         localCategories[existingByIndex] = formattedCategory;
@@ -1524,46 +1760,7 @@ async function startServer() {
       });
       persistProducts();
 
-      // Sync to Supabase if database client is available
-      let dbSynced = false;
-      let dbErrorDetails = null;
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          const dbResult = await upsertCategoryToSupabase(supabase, {
-            id: catId,
-            catName,
-            cleanSlug,
-            imgVal,
-            bannerVal,
-            sectionBanner,
-            description,
-            status,
-            orderVal,
-            seoTitle,
-            seoDescription,
-            createdAt,
-            nowStr
-          });
-
-          if (dbResult.success) {
-            dbSynced = true;
-          } else {
-            dbErrorDetails = dbResult.error?.message || "Supabase write failed";
-          }
-        } catch (sbErr: any) {
-          console.warn("Supabase upsert exception:", sbErr?.message);
-          dbErrorDetails = sbErr?.message;
-        }
-      }
-
-      res.status(200).json({
-        success: true,
-        valid: true,
-        ...formattedCategory,
-        dbSynced,
-        dbError: dbErrorDetails
-      });
+      res.status(200).json({ ...formattedCategory, dbSynced });
     } catch (err: any) {
       console.error("Error in POST /api/categories:", err);
       res.status(500).json({ error: "Failed to save category", message: err.message });

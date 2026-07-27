@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { CategoryService } from '../services/db';
 import { 
   ArrowLeft, Grid, ShoppingBag, Layers, ClipboardList, Users, User,
   Image as ImageIcon, Percent, CreditCard, Truck, MessageSquare, Phone,
@@ -29,7 +30,6 @@ import CustomersPage from './Customers';
 import DatabaseSetup from './Admin/DatabaseSetup';
 import { useCompany } from '../context/CompanyContext';
 import { authClient } from '../lib/auth';
-import { fetchCategoriesAndCache } from '../utils/productCache';
 
 
 export default function AdminPage() {
@@ -207,7 +207,7 @@ export default function AdminPage() {
   };
 
   const loadCategoriesFromApi = () => {
-    fetchCategoriesAndCache(true)
+    CategoryService.getCategories()
       .then(data => {
         if (Array.isArray(data)) {
           setCategoriesDb(data);
@@ -218,7 +218,7 @@ export default function AdminPage() {
           }
         }
       })
-      .catch(err => console.error("Error loading categories", err));
+      .catch(err => console.error("Error loading categories directly from DB:", err));
   };
 
   // Courier active status configuration settings
@@ -379,7 +379,7 @@ export default function AdminPage() {
         setEditingProduct({
           id: 'new',
           name: '',
-          category: categoriesDb[0]?.name || 'Saree',
+          category: categoriesDb[0]?.name || '',
           price: 0,
           image: '',
           images: [],
@@ -1406,10 +1406,10 @@ export default function AdminPage() {
     }
 
     setIsLoading(true);
-    const selectedCategory = categoriesDb.find(cat => cat.id === prodCategory) || { 
-      id: prodCategory || '1', 
-      slug: prodCategory === '1' ? 'saree' : prodCategory === '2' ? 'punjabi' : prodCategory === '3' ? 'polo-shirt' : prodCategory === '4' ? 't-shirt' : prodCategory === '5' ? 'bags' : 'saree', 
-      name: prodCategory === '1' ? 'Saree' : prodCategory === '2' ? 'Punjabi' : prodCategory === '3' ? 'Polo Shirt' : prodCategory === '4' ? 'T-Shirt' : prodCategory === '5' ? 'Bags' : 'Saree',
+    const selectedCategory = categoriesDb.find(cat => cat.id === prodCategory || cat.name === prodCategory) || { 
+      id: prodCategory || '', 
+      slug: prodCategory ? prodCategory.toLowerCase().replace(/\s+/g, '-') : '', 
+      name: prodCategory || '',
       mainBanner: '',
       sectionBanner: ''
     };
@@ -2015,17 +2015,10 @@ export default function AdminPage() {
                   setCategoryToDelete(null);
                   setIsLoading(true);
                   try {
-                    const res = await fetch(`/api/categories/${catId}`, {
-                      method: 'DELETE'
-                    });
-                    if (res.ok) {
-                      showToast('🗑️ Category deleted successfully!');
-                      loadCategoriesFromApi();
-                      forceSyncDatabase();
-                    } else {
-                      const err = await res.json();
-                      showToast(`Error: ${err.message || 'Failed to delete category.'}`);
-                    }
+                    await CategoryService.deleteCategory(catId);
+                    showToast('🗑️ Category deleted successfully!');
+                    loadCategoriesFromApi();
+                    forceSyncDatabase();
                   } catch (err) {
                     console.error("Error during category deletion:", err);
                     showToast('Failed to delete category due to a network error.');
@@ -2787,10 +2780,7 @@ export default function AdminPage() {
                 <AdminProductDetailsEdit 
                   product={editingProduct}
                   allProducts={products}
-                  categories={categoriesDb.filter(c => c.status === true).length > 0 
-                    ? categoriesDb.filter(c => c.status === true).map(c => c.name)
-                    : ['Saree', 'Punjabi', 'Polo Shirt', 'T-Shirt', 'Bags']
-                  }
+                  categories={categoriesDb.filter(c => c.status === true).map(c => c.name)}
                   onClose={() => navigate('/admin/products')}
                   onSave={async (id, payload) => {
                     try {
@@ -3601,103 +3591,21 @@ export default function AdminPage() {
                                 createdAt: editingCategory?.createdAt || new Date().toLocaleDateString('en-US')
                               };
 
-                              const res = await fetch('/api/categories', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                              });
+                              await CategoryService.createCategory(payload);
 
-                              let resData: any = {};
-                              const contentType = res.headers.get("content-type");
-                              if (contentType && contentType.includes("application/json")) {
-                                resData = await res.json();
-                              } else {
-                                const rawText = await res.text();
-                                console.error("Non-JSON response from server:", rawText);
-                                resData = {
-                                  error: "Server Error",
-                                  message: `Server returned invalid response (${res.status}). Please check server logs.`
-                                };
-                              }
+                              showToast(`✓ Category Saved Successfully!`);
+                              setEditingCategory(null);
+                              setCatFormName('');
+                              setCatFormSlug('');
+                              setCatFormImage('');
+                              setCatFormBanner('');
+                              setCatFormDescription('');
+                              setCatFormStatus(true);
+                              setCatFormSeoTitle('');
+                              setCatFormSeoDescription('');
 
-                              if (res.ok) {
-                                showToast(`✓ Category Saved Successfully!`);
-
-                                const savedCatObj: Category = {
-                                  id: resData.id || editingCategory?.id || ("cat_" + Date.now()),
-                                  name: resData.name || catFormName.trim(),
-                                  slug: resData.slug || catFormSlug || catFormName.trim().toLowerCase().replace(/\s+/g, '-'),
-                                  image: resData.image || resData.iconImage || catFormImage || '',
-                                  iconImage: resData.iconImage || resData.image || catFormImage || '',
-                                  banner: resData.banner || resData.mainBanner || catFormBanner || '',
-                                  mainBanner: resData.mainBanner || resData.banner || catFormBanner || '',
-                                  sectionBanner: resData.sectionBanner || '',
-                                  description: resData.description || catFormDescription || '',
-                                  serialNumber: resData.displayOrder || resData.serialNumber || catFormDisplayOrder,
-                                  displayOrder: resData.displayOrder || resData.serialNumber || catFormDisplayOrder,
-                                  status: resData.status !== false,
-                                  seoTitle: resData.seoTitle || catFormSeoTitle,
-                                  seoDescription: resData.seoDescription || catFormSeoDescription,
-                                  createdAt: resData.createdAt || editingCategory?.createdAt || new Date().toLocaleDateString('en-US'),
-                                  updatedAt: resData.updatedAt || new Date().toLocaleDateString('en-US')
-                                };
-
-                                setCategoriesDb(prev => {
-                                  const idx = prev.findIndex(c => c.id === savedCatObj.id || (c.slug && savedCatObj.slug && c.slug.toLowerCase() === savedCatObj.slug.toLowerCase()));
-                                  if (idx !== -1) {
-                                    const copy = [...prev];
-                                    copy[idx] = savedCatObj;
-                                    return copy;
-                                  }
-                                  return [savedCatObj, ...prev];
-                                });
-
-                                try {
-                                  const stored = JSON.parse(localStorage.getItem('naimshop_categories') || '[]');
-                                  const idx = stored.findIndex((c: any) => c.id === savedCatObj.id || (c.slug && savedCatObj.slug && c.slug.toLowerCase() === savedCatObj.slug.toLowerCase()));
-                                  if (idx !== -1) {
-                                    stored[idx] = savedCatObj;
-                                  } else {
-                                    stored.unshift(savedCatObj);
-                                  }
-                                  localStorage.setItem('naimshop_categories', JSON.stringify(stored));
-                                  localStorage.setItem('naimshop_categories_cache', JSON.stringify(stored));
-                                } catch (_) {}
-
-                                setEditingCategory(null);
-                                setCatFormName('');
-                                setCatFormSlug('');
-                                setCatFormImage('');
-                                setCatFormBanner('');
-                                setCatFormDescription('');
-                                setCatFormStatus(true);
-                                setCatFormSeoTitle('');
-                                setCatFormSeoDescription('');
-
-                                setCategoryTab('listing');
-                                loadCategoriesFromApi();
-                              } else {
-                                showToast(`❌ ${resData.message || resData.error || 'Failed to save category'}`);
-                                if (resData.tableExists === false) {
-                                  setDbCheckState(prev => ({
-                                    ...prev,
-                                    checking: false,
-                                    valid: false,
-                                    tableExists: false,
-                                    missingColumns: resData.missingColumns || ['category_name', 'slug', 'image', 'banner', 'description', 'status', 'display_order', 'seo_title', 'seo_description', 'created_at', 'updated_at'],
-                                    message: resData.message || 'Category table named "categories" has not been created.'
-                                  }));
-                                } else if (resData.missingColumns && resData.missingColumns.length > 0) {
-                                  setDbCheckState(prev => ({
-                                    ...prev,
-                                    checking: false,
-                                    valid: false,
-                                    tableExists: true,
-                                    missingColumns: resData.missingColumns,
-                                    message: resData.message || 'Missing required database columns.'
-                                  }));
-                                }
-                              }
+                              setCategoryTab('listing');
+                              loadCategoriesFromApi();
                             } catch (err: any) {
                               console.error("Save error:", err);
                               showToast(`❌ Category save error: ${err.message || 'Please try again'}`);
@@ -3909,16 +3817,10 @@ export default function AdminPage() {
                             onClick={async () => {
                               setIsLoading(true);
                               try {
-                                const res = await fetch(`/api/categories/${categoryToDelete.id}`, {
-                                  method: 'DELETE'
-                                });
-                                if (res.ok) {
-                                  showToast("✓ Category deleted successfully!");
-                                  setCategoryToDelete(null);
-                                  loadCategoriesFromApi();
-                                } else {
-                                  showToast("❌ Failed to delete category");
-                                }
+                                await CategoryService.deleteCategory(categoryToDelete.id);
+                                showToast("✓ Category deleted successfully!");
+                                setCategoryToDelete(null);
+                                loadCategoriesFromApi();
                               } catch (e) {
                                 showToast("❌ Delete category error");
                               } finally {

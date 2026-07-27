@@ -120,16 +120,14 @@ export default function CategoryDetailsPage() {
 
 
   const filteredProducts = products
-    .filter(p => (
-      p.categoryId === activeCategory?.id || 
-      (p.categorySlug && slug && p.categorySlug.toLowerCase() === slug.toLowerCase()) ||
-      (activeCategory?.slug && p.categorySlug && activeCategory.slug.toLowerCase() === p.categorySlug.toLowerCase()) ||
-      (p.categoryName && queryName && p.categoryName.toLowerCase() === queryName.toLowerCase()) ||
-      (p.category && queryName && p.category.toLowerCase() === queryName.toLowerCase())
-    ) && p.status === 'published' && p.isDeleted !== true)
+    .filter(p => (p.categoryId === activeCategory?.id || p.categorySlug === slug) && p.status === 'published' && p.isDeleted !== true)
     .sort((a, b) => (Number(a.sortOrder) || 99) - (Number(b.sortOrder) || 99));
 
-  const finalProducts = filteredProducts;
+  const finalProducts = filteredProducts.length 
+    ? filteredProducts 
+    : products
+        .filter(p => (p.categoryId === activeCategory?.id || p.categoryName?.toLowerCase() === queryName.toLowerCase()) && p.status === 'published' && p.isDeleted !== true)
+        .sort((a, b) => (Number(a.sortOrder) || 99) - (Number(b.sortOrder) || 99));
 
   if (loading) {
     return (

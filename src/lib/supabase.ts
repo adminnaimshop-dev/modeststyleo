@@ -36,23 +36,28 @@ export function getEnvVars(): SupabaseConfig {
 }
 
 export function loadSupabaseConfig(): SupabaseConfig {
-  const envConfig = getEnvVars();
-  let { url, key } = envConfig;
+  let url = '';
+  let key = '';
 
-  // Safe server-side check for local config file
-  if (typeof window === 'undefined' && typeof process !== 'undefined' && process.cwd) {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const configPath = path.join(process.cwd(), 'local_supabase_config.json');
-      if (fs.existsSync(configPath)) {
-        const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (data.url) url = data.url;
-        if (data.key) key = data.key;
-      }
-    } catch (err) {
-      // Ignore file reading errors in non-node environments
+  // Safe server-side check for local configuration file
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const configPath = path.join(process.cwd(), 'local_supabase_config.json');
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (data.url) url = data.url;
+      if (data.key) key = data.key;
     }
+  } catch (err) {
+    // Ignore file reading errors in browser context
+  }
+
+  // Fallback to environment variables if not loaded from local file
+  if (!url || !key) {
+    const envConfig = getEnvVars();
+    if (!url) url = envConfig.url;
+    if (!key) key = envConfig.key;
   }
 
   return { url, key };
@@ -65,7 +70,6 @@ export function saveSupabaseConfig(config: SupabaseConfig): boolean {
       const path = require('path');
       const configPath = path.join(process.cwd(), 'local_supabase_config.json');
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-      supabaseInstance = null;
       return true;
     } catch (err) {
       console.error('Error saving local_supabase_config.json:', err);
@@ -75,24 +79,19 @@ export function saveSupabaseConfig(config: SupabaseConfig): boolean {
   return false;
 }
 
-let supabaseInstance: SupabaseClient | null = null;
-
 export function getSupabaseClient(): SupabaseClient | null {
-  if (supabaseInstance) return supabaseInstance;
-
   const config = loadSupabaseConfig();
   if (!config.url || !config.key) {
     return null;
   }
 
   try {
-    supabaseInstance = createClient(config.url, config.key, {
+    return createClient(config.url, config.key, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
+        persistSession: false,
+        autoRefreshToken: false,
       }
     });
-    return supabaseInstance;
   } catch (err) {
     console.error('Failed to initialize Supabase client:', err);
     return null;

@@ -1,0 +1,13 @@
+{
+  "cwd": "/app/applet",
+  "cfgUrl": "https://mmughpeyyucoetqyrhhw.supabase.co",
+  "cfgKeyLength": 208,
+  "cfgKeyStart": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd",
+  "cfgKeyPayload": {
+    "iss": "supabase",
+    "ref": "mmughpeyyucoetqyrhhw",
+    "role": "anon",
+    "iat": 1784798271,
+    "exp": 2100374271
+  }
+}
