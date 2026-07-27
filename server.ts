@@ -1389,9 +1389,31 @@ async function startServer() {
             seoTitle: c.seo_title || '',
             seoDescription: c.seo_description || ''
           }));
-          localCategories = mapped;
+
+          // Merge Supabase categories with localCategories so local images and custom data are preserved
+          const mergedList = [...localCategories];
+          mapped.forEach((sbCat: any) => {
+            const idx = mergedList.findIndex(
+              lc => lc.id === sbCat.id || (lc.slug && sbCat.slug && lc.slug.toLowerCase() === sbCat.slug.toLowerCase())
+            );
+            if (idx !== -1) {
+              mergedList[idx] = {
+                ...mergedList[idx],
+                ...sbCat,
+                image: sbCat.image || mergedList[idx].image || '',
+                iconImage: sbCat.iconImage || mergedList[idx].iconImage || '',
+                banner: sbCat.banner || mergedList[idx].banner || '',
+                mainBanner: sbCat.mainBanner || mergedList[idx].mainBanner || '',
+                description: sbCat.description || mergedList[idx].description || ''
+              };
+            } else {
+              mergedList.push(sbCat);
+            }
+          });
+
+          localCategories = mergedList;
           persistCategories();
-          return res.json(mapped);
+          return res.json(localCategories);
         } else if (!error && data && data.length === 0) {
           // If Supabase table is currently empty, return localCategories fallback
           if (localCategories && localCategories.length > 0) {

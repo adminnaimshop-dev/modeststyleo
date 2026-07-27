@@ -3622,6 +3622,48 @@ export default function AdminPage() {
 
                               if (res.ok) {
                                 showToast(`✓ Category Saved Successfully!`);
+
+                                const savedCatObj: Category = {
+                                  id: resData.id || editingCategory?.id || ("cat_" + Date.now()),
+                                  name: resData.name || catFormName.trim(),
+                                  slug: resData.slug || catFormSlug || catFormName.trim().toLowerCase().replace(/\s+/g, '-'),
+                                  image: resData.image || resData.iconImage || catFormImage || '',
+                                  iconImage: resData.iconImage || resData.image || catFormImage || '',
+                                  banner: resData.banner || resData.mainBanner || catFormBanner || '',
+                                  mainBanner: resData.mainBanner || resData.banner || catFormBanner || '',
+                                  sectionBanner: resData.sectionBanner || '',
+                                  description: resData.description || catFormDescription || '',
+                                  serialNumber: resData.displayOrder || resData.serialNumber || catFormDisplayOrder,
+                                  displayOrder: resData.displayOrder || resData.serialNumber || catFormDisplayOrder,
+                                  status: resData.status !== false,
+                                  seoTitle: resData.seoTitle || catFormSeoTitle,
+                                  seoDescription: resData.seoDescription || catFormSeoDescription,
+                                  createdAt: resData.createdAt || editingCategory?.createdAt || new Date().toLocaleDateString('en-US'),
+                                  updatedAt: resData.updatedAt || new Date().toLocaleDateString('en-US')
+                                };
+
+                                setCategoriesDb(prev => {
+                                  const idx = prev.findIndex(c => c.id === savedCatObj.id || (c.slug && savedCatObj.slug && c.slug.toLowerCase() === savedCatObj.slug.toLowerCase()));
+                                  if (idx !== -1) {
+                                    const copy = [...prev];
+                                    copy[idx] = savedCatObj;
+                                    return copy;
+                                  }
+                                  return [savedCatObj, ...prev];
+                                });
+
+                                try {
+                                  const stored = JSON.parse(localStorage.getItem('naimshop_categories') || '[]');
+                                  const idx = stored.findIndex((c: any) => c.id === savedCatObj.id || (c.slug && savedCatObj.slug && c.slug.toLowerCase() === savedCatObj.slug.toLowerCase()));
+                                  if (idx !== -1) {
+                                    stored[idx] = savedCatObj;
+                                  } else {
+                                    stored.unshift(savedCatObj);
+                                  }
+                                  localStorage.setItem('naimshop_categories', JSON.stringify(stored));
+                                  localStorage.setItem('naimshop_categories_cache', JSON.stringify(stored));
+                                } catch (_) {}
+
                                 setEditingCategory(null);
                                 setCatFormName('');
                                 setCatFormSlug('');
