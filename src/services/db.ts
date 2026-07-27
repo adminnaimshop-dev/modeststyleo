@@ -13,11 +13,20 @@ export const CategoryService = {
   },
 
   async createCategory(category: Partial<Category>): Promise<Category> {
-    const res = await fetch('/api/categories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(category)
-    });
+    let res: Response;
+    try {
+      res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(category)
+      });
+    } catch (err: any) {
+      if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+        console.error('Network error or Payload Too Large:', err);
+        throw new Error('Network error: The image or payload might be too large, or the server dropped the connection.');
+      }
+      throw err;
+    }
 
     let data;
     const contentType = res.headers.get("content-type");

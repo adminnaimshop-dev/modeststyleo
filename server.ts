@@ -1285,11 +1285,13 @@ async function startServer() {
   async function upsertCategoryToSupabase(supabase: any, fullData: Record<string, any>) {
     const payload: Record<string, any> = {
       id: fullData.id,
+      name: fullData.catName,
       category_name: fullData.catName,
       slug: fullData.cleanSlug,
       image: fullData.imgVal,
       icon_image: fullData.imgVal,
       banner: fullData.bannerVal,
+      main_banner: fullData.bannerVal,
       section_banner: fullData.sectionBanner || "",
       description: fullData.description || "",
       status: fullData.status !== undefined ? !!fullData.status : true,
@@ -1303,7 +1305,7 @@ async function startServer() {
       short_title: fullData.catName
     };
 
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 20; attempt++) {
       const { error } = await supabase.from('categories').upsert(payload);
       if (!error) {
         return { success: true, error: null };
