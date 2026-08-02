@@ -234,7 +234,7 @@ const REQUIRED_DB_SCHEMAS: Record<string, string[]> = {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // Middleware for body parsing
   app.use(express.json({ limit: "50mb" }));
