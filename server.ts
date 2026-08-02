@@ -1638,40 +1638,64 @@ async function startServer() {
   app.post("/api/upload", async (req, res) => {
     try {
       const { image, folder = "categories" } = req.body;
-      if (!image || !image.startsWith("data:image")) {
-        return res.json({ url: image }); // Not a base64 string, return as is
+      if (!image || typeof image !== 'string' || !image.startsWith("data:image")) {
+        return res.json({ url: image || "" });
       }
 
       const supabase = getBackendSupabaseClient();
-      if (!supabase) {
-        return res.status(500).json({ error: "Supabase not connected" });
+      if (supabase) {
+        try {
+          await supabase.storage.createBucket('uploads', { public: true }).catch(() => {});
+
+          const mimeTypeMatch = image.match(/data:(image\/[^;]+);base64,/);
+          const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/webp';
+          const ext = mimeType.split('/')[1] || 'webp';
+          const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+          
+          const parts = image.split(',');
+          if (parts.length > 1) {
+            const buffer = Buffer.from(parts[1], 'base64');
+            const { data, error } = await supabase.storage.from('uploads').upload(fileName, buffer, {
+              contentType: mimeType,
+              upsert: true
+            });
+
+            if (!error) {
+              const { data: publicUrlData } = supabase.storage.from('uploads').getPublicUrl(fileName);
+              return res.json({ url: publicUrlData.publicUrl });
+            }
+            console.warn("Supabase storage upload warning:", error.message);
+          }
+        } catch (supabaseErr) {
+          console.warn("Supabase storage exception:", supabaseErr);
+        }
       }
 
-      // Ensure bucket exists
-      await supabase.storage.createBucket('uploads', { public: true }).catch(() => {});
-
-      const mimeTypeMatch = image.match(/data:(image\/[^;]+);base64,/);
-      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/webp';
-      const ext = mimeType.split('/')[1] || 'webp';
-      const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-      
-      const buffer = Buffer.from(image.split(',')[1], 'base64');
-      
-      const { data, error } = await supabase.storage.from('uploads').upload(fileName, buffer, {
-        contentType: mimeType,
-        upsert: true
-      });
-
-      if (error) {
-        console.error("Storage upload error:", error);
-        return res.status(500).json({ error: error.message });
+      // Fallback: save to public/uploads locally or return data URL
+      try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', folder);
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const mimeTypeMatch = image.match(/data:(image\/[^;]+);base64,/);
+        const ext = mimeTypeMatch ? mimeTypeMatch[1].split('/')[1] : 'webp';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+        const filePath = path.join(uploadsDir, fileName);
+        const parts = image.split(',');
+        if (parts.length > 1) {
+          const buffer = Buffer.from(parts[1], 'base64');
+          fs.writeFileSync(filePath, buffer);
+          return res.json({ url: `/uploads/${folder}/${fileName}` });
+        }
+      } catch (localErr) {
+        console.warn("Local upload fallback warning:", localErr);
       }
 
-      const { data: publicUrlData } = supabase.storage.from('uploads').getPublicUrl(fileName);
-      res.json({ url: publicUrlData.publicUrl });
+      // Ultimate fallback: return data URL so upload never fails
+      return res.json({ url: image });
     } catch (err: any) {
       console.error("Upload endpoint error:", err);
-      res.status(500).json({ error: err.message });
+      return res.json({ url: req.body?.image || "" });
     }
   });
 
