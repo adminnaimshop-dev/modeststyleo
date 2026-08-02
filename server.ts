@@ -1959,17 +1959,68 @@ async function startServer() {
             seoTitle: c.seo_title || '',
             seoDescription: c.seo_description || ''
           }));
-          localCategories = mapped;
-          persistCategories();
-          return res.json(mapped);
-        } else {
-          localCategories = [];
+
+          // If database is empty but we have local categories, auto-sync/upload them to database
+          if (mapped.length === 0 && localCategories.length > 0) {
+            console.log("Database categories table is empty. Auto-syncing local categories to Supabase...");
+            for (const cat of localCategories) {
+              await upsertCategoryToSupabase(supabase, {
+                id: cat.id,
+                catName: cat.name,
+                cleanSlug: cat.slug,
+                imgVal: cat.image,
+                bannerVal: cat.banner,
+                sectionBanner: cat.sectionBanner,
+                description: cat.description,
+                status: cat.status,
+                orderVal: cat.displayOrder || cat.serialNumber,
+                seoTitle: cat.seoTitle,
+                seoDescription: cat.seoDescription,
+                createdAt: cat.createdAt,
+                nowStr: cat.updatedAt || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+              });
+            }
+            return res.json(localCategories);
+          }
+
+          // If database has categories, merge them with localCategories (by ID) to avoid losing any local unsynced ones
+          if (mapped.length > 0) {
+            const merged = [...mapped];
+            for (const localCat of localCategories) {
+              if (!merged.some(m => m.id === localCat.id)) {
+                console.log(`Auto-syncing missing local category ${localCat.name} to database...`);
+                await upsertCategoryToSupabase(supabase, {
+                  id: localCat.id,
+                  catName: localCat.name,
+                  cleanSlug: localCat.slug,
+                  imgVal: localCat.image,
+                  bannerVal: localCat.banner,
+                  sectionBanner: localCat.sectionBanner,
+                  description: localCat.description,
+                  status: localCat.status,
+                  orderVal: localCat.displayOrder || localCat.serialNumber,
+                  seoTitle: localCat.seoTitle,
+                  seoDescription: localCat.seoDescription,
+                  createdAt: localCat.createdAt,
+                  nowStr: localCat.updatedAt || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                });
+                merged.push(localCat);
+              }
+            }
+            localCategories = merged;
+            persistCategories();
+            return res.json(merged);
+          }
+
           return res.json([]);
+        } else {
+          // If there's an error (e.g., table missing), do NOT clear localCategories, fallback to local cache
+          console.warn("Supabase fetch categories error. Falling back to local categories:", error);
+          return res.json(localCategories);
         }
       } catch (err) {
-        console.error("Failed to fetch categories from Supabase:", err);
-        localCategories = [];
-        return res.json([]);
+        console.error("Failed to fetch categories from Supabase. Falling back to local categories:", err);
+        return res.json(localCategories);
       }
     }
     res.json(localCategories);
