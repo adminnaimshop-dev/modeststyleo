@@ -29,13 +29,12 @@ export const CategoryService = {
     }
 
     let data;
-    const contentType = res.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
-      const rawText = await res.text();
+    const rawText = await res.text();
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (err) {
       console.error("Non-JSON response from server:", rawText);
-      throw new Error(`Server returned invalid response (${res.status}).`);
+      throw new Error(`Server returned invalid response (${res.status}): ${rawText.substring(0, 100)}`);
     }
 
     if (!res.ok) {
