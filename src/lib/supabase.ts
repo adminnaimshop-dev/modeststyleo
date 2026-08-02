@@ -43,11 +43,19 @@ export function loadSupabaseConfig(): SupabaseConfig {
   try {
     const fs = require('fs');
     const path = require('path');
-    const configPath = path.join(process.cwd(), 'local_supabase_config.json');
-    if (fs.existsSync(configPath)) {
-      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (data.url) url = data.url;
-      if (data.key) key = data.key;
+    const configPaths = [
+      path.join(process.cwd(), 'local_supabase_config.json'),
+      path.join(__dirname, 'local_supabase_config.json'),
+      path.join(__dirname, '..', 'local_supabase_config.json'),
+      path.join(__dirname, '..', '..', 'local_supabase_config.json')
+    ];
+    for (const p of configPaths) {
+      if (fs.existsSync(p)) {
+        const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        if (data.url) url = data.url;
+        if (data.key) key = data.key;
+        break;
+      }
     }
   } catch (err) {
     // Ignore file reading errors in browser context
@@ -68,9 +76,23 @@ export function saveSupabaseConfig(config: SupabaseConfig): boolean {
     try {
       const fs = require('fs');
       const path = require('path');
-      const configPath = path.join(process.cwd(), 'local_supabase_config.json');
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-      return true;
+      const configPaths = [
+        path.join(process.cwd(), 'local_supabase_config.json'),
+        path.join(__dirname, 'local_supabase_config.json'),
+        path.join(__dirname, '..', 'local_supabase_config.json'),
+        path.join(__dirname, '..', '..', 'local_supabase_config.json')
+      ];
+      let saved = false;
+      for (const p of configPaths) {
+        try {
+          const dir = path.dirname(p);
+          if (fs.existsSync(dir)) {
+            fs.writeFileSync(p, JSON.stringify(config, null, 2), 'utf-8');
+            saved = true;
+          }
+        } catch (inner) {}
+      }
+      return saved;
     } catch (err) {
       console.error('Error saving local_supabase_config.json:', err);
       return false;
