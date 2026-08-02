@@ -14,6 +14,7 @@ export const CategoryService = {
 
   async createCategory(category: Partial<Category>): Promise<Category> {
     let res: Response;
+    const requestUrl = window.location.origin + '/api/categories';
     try {
       res = await fetch('/api/categories', {
         method: 'POST',
@@ -21,24 +22,38 @@ export const CategoryService = {
         body: JSON.stringify(category)
       });
     } catch (err: any) {
+      console.error("🔍 [Category API Diagnostic] Network/Fetch Error:", {
+        url: requestUrl,
+        error: err?.message || err
+      });
       if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
-        console.error('Network error or Payload Too Large:', err);
         throw new Error('Network error: The image or payload might be too large, or the server dropped the connection.');
       }
       throw err;
     }
 
-    let data;
+    const headersObj: Record<string, string> = {};
+    res.headers.forEach((val, key) => { headersObj[key] = val; });
+
     const rawText = await res.text();
+
+    console.group("🔍 [Category API Diagnostic]");
+    console.log("Request URL:", requestUrl);
+    console.log("HTTP Status:", res.status, res.statusText);
+    console.log("Response Headers:", headersObj);
+    console.log("Response Body (Raw):", rawText);
+    console.groupEnd();
+
+    let data;
     try {
       data = rawText ? JSON.parse(rawText) : {};
     } catch (err) {
-      console.error("Non-JSON response from server:", rawText);
+      console.error("❌ [Category API Diagnostic] Failed to parse JSON response:", rawText);
       throw new Error(`Server returned invalid response (${res.status}): ${rawText.substring(0, 100)}`);
     }
 
     if (!res.ok) {
-      console.error('Error creating category via API:', data);
+      console.error('❌ [Category API Diagnostic] Error creating category via API:', data);
       throw new Error(data.message || data.error || 'Failed to create category');
     }
 
