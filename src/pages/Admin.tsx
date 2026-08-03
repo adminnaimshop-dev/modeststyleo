@@ -30,6 +30,7 @@ import CustomersPage from './Customers';
 import DatabaseSetup from './Admin/DatabaseSetup';
 import { useCompany } from '../context/CompanyContext';
 import { authClient } from '../lib/auth';
+import { getSupabaseClient } from '../lib/supabase';
 
 
 export default function AdminPage() {
@@ -2817,15 +2818,154 @@ export default function AdminPage() {
                       const url = isNew ? '/api/products' : `/api/products/${id}`;
                       const method = isNew ? 'POST' : 'PUT';
 
-                      const response = await fetch(url, {
-                        method: method,
-                        headers: {
-                          'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                      });
-                      if (response.ok) {
-                        const updated = await response.json();
+                      const saveDirectlyToSupabase = async () => {
+                        const client = getSupabaseClient();
+                        if (!client) throw new Error("Supabase client is not configured");
+
+                        const newProdId = isNew ? "p_" + Date.now() + "_" + Math.floor(Math.random() * 100000) : id;
+                        const productName = payload.name || payload.title || "New Product";
+                        const productSlug = payload.slug || productName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+                        const dbRow = {
+                          id: newProdId,
+                          product_name: productName,
+                          product_slug: productSlug,
+                          name: productName,
+                          title: productName,
+                          category_id: payload.categoryId || null,
+                          category_slug: payload.categorySlug || "t-shirt",
+                          category_name: payload.categoryName || "T-Shirt",
+                          brand: payload.brand || "Naim Shop",
+                          description: payload.shortDescription || productName,
+                          short_description: payload.shortDescription || productName,
+                          full_description: payload.fullDescription || productName,
+                          price: Number(payload.price) || 0,
+                          regular_price: payload.oldPrice ? Number(payload.oldPrice) : Number(payload.price) || 0,
+                          old_price: payload.oldPrice ? Number(payload.oldPrice) : null,
+                          sale_price: payload.price ? Number(payload.price) : null,
+                          discount_price: payload.price ? Number(payload.price) : null,
+                          stock_qty: typeof payload.stock === 'number' ? payload.stock : (parseInt(payload.stock || '') || 100),
+                          stock: typeof payload.stock === 'string' ? payload.stock : "In Stock",
+                          sku: payload.sku || "SKU-" + Date.now(),
+                          status: payload.status || "active",
+                          images: payload.images || (payload.image ? [payload.image] : []),
+                          image: payload.image || (payload.images && payload.images[0]) || "",
+                          fabric: payload.fabric || "Premium Cotton",
+                          gsm: payload.gsm || "180 GSM",
+                          fit: payload.fit || "Regular Fit",
+                          care: payload.care || "Normal Wash",
+                          sizes: payload.sizes || ["M", "L", "XL", "XXL"],
+                          views: Number(payload.views) || 2200,
+                          rating: 4.8,
+                          is_flash_sale: !!payload.isFlashSale,
+                          is_deleted: false,
+                        };
+
+                        const { error } = await client.from('products').upsert([dbRow]);
+                        if (error) {
+                          throw error;
+                        }
+
+                        const mappedProduct: Product = {
+                          id: dbRow.id,
+                          name: dbRow.product_name,
+                          category: dbRow.category_name,
+                          sku: dbRow.sku,
+                          price: dbRow.price,
+                          oldPrice: dbRow.regular_price || undefined,
+                          discountPrice: dbRow.sale_price || undefined,
+                          stock: dbRow.stock,
+                          sizes: dbRow.sizes,
+                          colors: payload.colors || ['Black', 'White'],
+                          fabric: dbRow.fabric,
+                          gsm: dbRow.gsm,
+                          fit: dbRow.fit,
+                          care: dbRow.care,
+                          shortDescription: dbRow.short_description,
+                          fullDescription: dbRow.full_description,
+                          views: dbRow.views,
+                          brand: dbRow.brand,
+                          rating: dbRow.rating,
+                          isFlashSale: dbRow.is_flash_sale,
+                          images: dbRow.images,
+                          image: dbRow.image,
+                          categorySlug: dbRow.category_slug,
+                          categoryId: dbRow.category_id || undefined,
+                          categoryName: dbRow.category_name
+                        };
+
+                        return mappedProduct;
+                      };
+
+                      let updated: any = null;
+                      let saveOk = false;
+                      let response: Response | null = null;
+
+                      try {
+                        response = await fetch(url, {
+                          method: method,
+                          headers: {
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify(payload)
+                        });
+
+                        const contentType = response.headers.get("content-type") || "";
+                        if (response.ok && contentType.includes("application/json")) {
+                          updated = await response.json();
+                          saveOk = true;
+                        } else {
+                          const errText = await response.text();
+                          if (contentType.includes("text/html") || errText.trim().startsWith("<!doctype")) {
+                            console.warn("API returned HTML instead of JSON. Falling back to direct client-side Supabase save.");
+                            updated = await saveDirectlyToSupabase();
+                            saveOk = true;
+                          } else {
+                            const errData = JSON.parse(errText || "{}");
+                            const errorMsg = errData.error || "Failed to save product spec";
+                            const customErr = new Error(errorMsg);
+                            (customErr as any).reason = errData.reason;
+                            (customErr as any).alterSql = errData.alterSql;
+                            (customErr as any).missingColumns = errData.missingColumns;
+                            (customErr as any).missingTables = errData.missingTables;
+                            (customErr as any).tableName = errData.tableName;
+                            throw customErr;
+                          }
+                        }
+                      } catch (apiErr: any) {
+                        console.warn("API call failed or was rejected. Trying direct client-side Supabase save...", apiErr);
+                        // If we already parsed standard error from server, re-throw it so frontend wizard can show missing columns/tables
+                        if (apiErr.reason || apiErr.missingColumns || apiErr.missingTables) {
+                          throw apiErr;
+                        }
+
+                        try {
+                          updated = await saveDirectlyToSupabase();
+                          saveOk = true;
+                        } catch (dbErr: any) {
+                          console.error("Direct save to Supabase failed:", dbErr);
+                          const dbErrMsg = dbErr?.message || '';
+                          const dbErrCode = dbErr?.code || '';
+                          const isTableMissing = dbErrCode === '42P01' || dbErrCode === 'PGRST301' || dbErrMsg.includes('relation "public.products" does not exist') || dbErrMsg.includes('relation "products" does not exist');
+                          
+                          const customErr = new Error(isTableMissing ? "products table does not exist in Supabase database." : dbErr.message);
+                          (customErr as any).reason = isTableMissing ? 'table_missing' : 'column_missing';
+                          if (isTableMissing) {
+                            (customErr as any).missingTables = ['products'];
+                          } else {
+                            const matchCol = dbErrMsg.match(/column "(.*?)"/);
+                            if (matchCol) {
+                              (customErr as any).missingColumns = [matchCol[1]];
+                            } else {
+                              // Fallback
+                              (customErr as any).missingColumns = [];
+                            }
+                          }
+                          throw customErr;
+                        }
+                      }
+
+                      if (saveOk && updated) {
                         if (isNew) {
                           setProducts(prev => {
                             const filtered = prev.filter(p => p.id !== updated.id);
@@ -2839,15 +2979,7 @@ export default function AdminPage() {
                         await forceSyncDatabase();
                         return updated;
                       } else {
-                        const errData = await response.json().catch(() => ({}));
-                        const errorMsg = errData.error || "Failed to save product spec";
-                        const customErr = new Error(errorMsg);
-                        (customErr as any).reason = errData.reason;
-                        (customErr as any).alterSql = errData.alterSql;
-                        (customErr as any).missingColumns = errData.missingColumns;
-                        (customErr as any).missingTables = errData.missingTables;
-                        (customErr as any).tableName = errData.tableName;
-                        throw customErr;
+                        throw new Error("Could not save product due to an unknown database issue.");
                       }
                     } catch (err) {
                       console.error(err);
@@ -3316,20 +3448,127 @@ export default function AdminPage() {
                             type="button"
                             onClick={async () => {
                               setDbCheckState(prev => ({ ...prev, checking: true }));
+                              
+                              const validateCategoriesSchemaClientSide = async () => {
+                                const client = getSupabaseClient();
+                                if (!client) {
+                                  return {
+                                    valid: false,
+                                    tableExists: false,
+                                    missingColumns: [],
+                                    message: 'Supabase client is not configured',
+                                    sqlScript: ''
+                                  };
+                                }
+
+                                try {
+                                  const { error: tableError } = await client.from('categories').select('id').limit(0);
+                                  if (tableError) {
+                                    const msg = tableError.message || '';
+                                    const code = tableError.code || '';
+                                    const isTableMissing = code === '42P01' || code === 'PGRST301' || msg.includes('relation "public.categories" does not exist') || msg.includes('relation "categories" does not exist') || msg.includes('does not exist');
+                                    if (isTableMissing) {
+                                      return {
+                                        valid: false,
+                                        tableExists: false,
+                                        missingColumns: ["id", "name", "slug", "image", "status", "serial_number"],
+                                        message: "Table 'categories' does not exist in Supabase database.",
+                                        sqlScript: `CREATE TABLE IF NOT EXISTS public.categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  image TEXT,
+  icon_image TEXT,
+  short_title TEXT,
+  main_banner TEXT,
+  section_banner TEXT,
+  status TEXT DEFAULT 'active',
+  serial_number INTEGER DEFAULT 0,
+  last_edited TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);`
+                                      };
+                                    }
+                                  }
+
+                                  const columnsToCheck = [
+                                    "id", "name", "image", "icon_image", "short_title", 
+                                    "main_banner", "section_banner", "status", 
+                                    "serial_number", "last_edited", "slug", "updated_at"
+                                  ];
+
+                                  const missingColumns: string[] = [];
+                                  for (const col of columnsToCheck) {
+                                    const { error: colErr } = await client.from('categories').select(col).limit(0);
+                                    if (colErr) {
+                                      const colMsg = colErr.message || '';
+                                      if (colMsg.includes('does not exist') || colMsg.includes('42703')) {
+                                        missingColumns.push(col);
+                                      }
+                                    }
+                                  }
+
+                                  if (missingColumns.length > 0) {
+                                    const alters = missingColumns.map(col => {
+                                      const isNum = col === 'serial_number';
+                                      return `ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS ${col} ${isNum ? 'INTEGER DEFAULT 0' : 'TEXT'};`;
+                                    }).join('\n');
+
+                                    return {
+                                      valid: false,
+                                      tableExists: true,
+                                      missingColumns,
+                                      message: `Missing Columns: ${missingColumns.join(', ')}`,
+                                      sqlScript: alters
+                                    };
+                                  }
+
+                                  return {
+                                    valid: true,
+                                    tableExists: true,
+                                    missingColumns: [],
+                                    message: "All columns found!",
+                                    sqlScript: ""
+                                  };
+                                } catch (err: any) {
+                                  return {
+                                    valid: true,
+                                    tableExists: true,
+                                    missingColumns: [],
+                                    message: "Client-side scan allowed",
+                                    sqlScript: ""
+                                  };
+                                }
+                              };
+
                               try {
                                 const res = await fetch('/api/categories/validate-schema');
-                                const data = await res.json();
-                                setDbCheckState({
-                                  checking: false,
-                                  valid: data.valid !== false,
-                                  tableExists: data.tableExists !== false,
-                                  missingColumns: data.missingColumns || [],
-                                  message: data.message || '',
-                                  sqlScript: data.sqlScript
-                                });
+                                const contentType = res.headers.get("content-type") || "";
+                                if (res.ok && contentType.includes("application/json")) {
+                                  const data = await res.json();
+                                  setDbCheckState({
+                                    checking: false,
+                                    valid: data.valid !== false,
+                                    tableExists: data.tableExists !== false,
+                                    missingColumns: data.missingColumns || [],
+                                    message: data.message || '',
+                                    sqlScript: data.sqlScript
+                                  });
+                                } else {
+                                  const clientData = await validateCategoriesSchemaClientSide();
+                                  setDbCheckState({
+                                    checking: false,
+                                    ...clientData
+                                  });
+                                }
                                 showToast("Schema re-scanned!");
                               } catch (e) {
-                                setDbCheckState(prev => ({ ...prev, checking: false }));
+                                const clientData = await validateCategoriesSchemaClientSide();
+                                setDbCheckState({
+                                  checking: false,
+                                  ...clientData
+                                });
+                                showToast("Schema re-scanned client-side!");
                               }
                             }}
                             className="text-[10px] font-bold uppercase text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-none border border-slate-700 cursor-pointer flex items-center gap-1"

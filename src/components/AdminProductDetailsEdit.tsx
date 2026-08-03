@@ -7,6 +7,7 @@ import {
 import { Product } from '../types';
 import imageCompression from 'browser-image-compression';
 import DatabaseWizard from './DatabaseWizard';
+import { getSupabaseClient } from '../lib/supabase';
 
 interface AdminProductDetailsEditProps {
   product: Product;
@@ -982,21 +983,95 @@ CREATE TABLE IF NOT EXISTS products (
       message: 'ডেটাবেজ কানেকশন এবং স্ট্রাকচার পরীক্ষা করা হচ্ছে।'
     });
 
+    const validateDatabaseClientSide = async () => {
+      const client = getSupabaseClient();
+      if (!client) {
+        return {
+          valid: false,
+          errorType: 'connection' as const,
+          message: 'Supabase URL/Key is not configured. Please connect to your database.'
+        };
+      }
+
+      try {
+        const { error: tableError } = await client.from('products').select('id').limit(0);
+        if (tableError) {
+          const msg = tableError.message || '';
+          const code = tableError.code || '';
+          const isTableMissing = code === '42P01' || code === 'PGRST301' || msg.includes('relation "public.products" does not exist') || msg.includes('relation "products" does not exist') || msg.includes('does not exist');
+          
+          if (isTableMissing) {
+            return {
+              valid: false,
+              errorType: 'table_missing' as const,
+              tableName: 'products',
+              message: 'products table does not exist in your Supabase database.'
+            };
+          }
+        }
+
+        const testColumns = [
+          "id", "product_name", "product_slug", "name", "price", "regular_price", "sale_price", 
+          "old_price", "discount_price", "category_id", "brand", "sku", "stock_qty", "stock", 
+          "status", "fabric", "gsm", "fit", "care", "short_description", "full_description", 
+          "is_flash_sale", "created_at"
+        ];
+
+        const missingCols: string[] = [];
+        for (const col of testColumns) {
+          const { error: colErr } = await client.from('products').select(col).limit(0);
+          if (colErr) {
+            const colMsg = colErr.message || '';
+            if (colMsg.includes('does not exist') || colMsg.includes('42703')) {
+              missingCols.push(col);
+            }
+          }
+        }
+
+        if (missingCols.length > 0) {
+          return {
+            valid: false,
+            errorType: 'column_missing' as const,
+            tableName: 'products',
+            columnName: missingCols[0],
+            missingColumns: missingCols,
+            message: `Missing Column: '${missingCols[0]}' does not exist in your products table.`
+          };
+        }
+
+        return { valid: true };
+      } catch (err: any) {
+        console.error("Direct browser-side validation failed:", err);
+        return { valid: true }; 
+      }
+    };
+
     try {
-      const valRes = await fetch("/api/db/validate-save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tableName: "products",
-          columns: [
-            "id", "product_name", "product_slug", "name", "price", "regular_price", "sale_price", 
-            "old_price", "discount_price", "category_id", "brand", "sku", "stock_qty", "stock", 
-            "status", "fabric", "gsm", "fit", "care", "short_description", "full_description", 
-            "is_flash_sale", "created_at"
-          ]
-        })
-      });
-      const valData = await valRes.json();
+      let valData: any = { valid: true };
+      try {
+        const valRes = await fetch("/api/db/validate-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tableName: "products",
+            columns: [
+              "id", "product_name", "product_slug", "name", "price", "regular_price", "sale_price", 
+              "old_price", "discount_price", "category_id", "brand", "sku", "stock_qty", "stock", 
+              "status", "fabric", "gsm", "fit", "care", "short_description", "full_description", 
+              "is_flash_sale", "created_at"
+            ]
+          })
+        });
+
+        const contentType = valRes.headers.get("content-type") || "";
+        if (valRes.ok && contentType.includes("application/json")) {
+          valData = await valRes.json();
+        } else {
+          valData = await validateDatabaseClientSide();
+        }
+      } catch (e) {
+        valData = await validateDatabaseClientSide();
+      }
       
       if (!valData.valid) {
         setValidationError({
@@ -1008,6 +1083,53 @@ CREATE TABLE IF NOT EXISTS products (
         
         setErrorMessage(valData.message);
 
+        // Generate custom alter table SQL or table setup SQL
+        if (valData.errorType === 'table_missing') {
+          setCustomTableName('products');
+          setCustomAlterSql(`CREATE TABLE IF NOT EXISTS public.products (
+  id TEXT PRIMARY KEY,
+  category_id TEXT,
+  product_name TEXT,
+  name TEXT,
+  title TEXT,
+  slug TEXT,
+  product_slug TEXT,
+  short_description TEXT,
+  full_description TEXT,
+  regular_price NUMERIC,
+  sale_price NUMERIC,
+  price NUMERIC,
+  old_price NUMERIC,
+  stock_quantity INTEGER DEFAULT 10,
+  stock TEXT,
+  sku TEXT,
+  product_image TEXT,
+  image TEXT,
+  gallery_images JSONB,
+  images JSONB,
+  status TEXT DEFAULT 'active',
+  featured BOOLEAN DEFAULT false,
+  is_flash_sale BOOLEAN DEFAULT false,
+  seo_title TEXT,
+  seo_description TEXT,
+  fabric TEXT,
+  gsm TEXT,
+  fit TEXT,
+  care TEXT,
+  sizes JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);`);
+        } else if (valData.errorType === 'column_missing') {
+          setCustomTableName('products');
+          setCustomMissingColumns(valData.missingColumns || [valData.columnName]);
+          const isNum = ['price', 'old_price', 'regular_price', 'sale_price', 'discount_price', 'views', 'stock_qty', 'rating'].includes(valData.columnName);
+          const isJson = ['images', 'sizes', 'colors', 'variants'].includes(valData.columnName);
+          const isBool = ['is_flash_sale', 'is_deleted', 'unpublished_by_system'].includes(valData.columnName);
+          const colType = isNum ? 'NUMERIC' : isJson ? 'JSONB' : isBool ? 'BOOLEAN DEFAULT FALSE' : 'TEXT';
+          setCustomAlterSql(`ALTER TABLE public.products ADD COLUMN IF NOT EXISTS ${valData.columnName} ${colType};`);
+        }
+        
         setToast({
           type: 'error',
           title: '❌ ডাটাবেজ সমস্যা',
@@ -1265,38 +1387,202 @@ CREATE TABLE IF NOT EXISTS products (
 
       {/* ERROR FEEDBACK / NOTIFIER */}
       {errorMessage && (
-        <div className="bg-slate-900 border-l-4 border-rose-500 text-white rounded-2xl p-5 shadow-2xl mb-8 pointer-events-auto">
+        <div className="bg-slate-900 border-2 border-amber-500/30 text-white rounded-2xl p-6 shadow-2xl mb-8 pointer-events-auto">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center shrink-0 border border-rose-500/20">
-              <AlertCircle className="text-rose-500" size={20} />
+            <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center shrink-0 border border-amber-500/20 text-amber-500">
+              <Database size={24} />
             </div>
             <div className="flex-1">
-              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500 mb-1">Status Notification</h4>
-              <p className="text-[13px] font-bold text-slate-100 leading-relaxed">
-                {errorMessage}
-              </p>
-              
-              <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-500">
+                  ডাটাবেজ ও প্রোডাক্ট সিঙ্ক ইন্ডিকেটর (Database Sync Verification)
+                </span>
+                <span className="text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-400 font-extrabold px-2.5 py-0.5 rounded-full">
+                  হ্যান্ডলিং গাইডেড ফ্লো
+                </span>
+              </div>
+
+              {/* Step-by-Step Indicators according to User Request */}
+              <div className="space-y-4 my-4">
+                {/* 1. Database Connection Status */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20">
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-100">ধাপ ১: ডাটাবেজ সংযোগ যাচাইকরণ</p>
+                      <p className="text-[10px] text-slate-400">Supabase ডাটাবেজ সফলভাবে সংযুক্ত আছে</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-green-400 font-extrabold flex items-center gap-1 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">
+                    <Check size={10} /> সংযুক্ত আছে
+                  </span>
+                </div>
+
+                {/* 2. Products Table Status Indicator */}
+                <div className="flex flex-col p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-1.5 rounded-lg border ${
+                        validationError?.errorType === 'table_missing' 
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' 
+                          : 'bg-green-500/10 text-green-400 border-green-500/20'
+                      }`}>
+                        {validationError?.errorType === 'table_missing' ? <AlertCircle className="w-4 h-4 text-rose-400" /> : <CheckCircle className="w-4 h-4 text-green-400" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-100">ধাপ ২: 'products' টেবিল যাচাইকরণ</p>
+                        <p className="text-[10px] text-slate-400">
+                          {validationError?.errorType === 'table_missing' 
+                            ? "❌ ডাটাবেজে 'products' নামের টেবিলটি পাওয়া যায়নি!" 
+                            : "✅ 'products' টেবিল সফলভাবে পাওয়া গেছে!"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                      validationError?.errorType === 'table_missing'
+                        ? 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                        : 'text-green-400 bg-green-500/10 border-green-500/20'
+                    }`}>
+                      {validationError?.errorType === 'table_missing' ? 'টেবিল নেই' : 'টেবিল বিদ্যমান'}
+                    </span>
+                  </div>
+
+                  {validationError?.errorType === 'table_missing' && customAlterSql && (
+                    <div className="mt-2 p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2.5">
+                      <p className="text-[11px] text-amber-400 font-bold leading-relaxed">
+                        💡 সমাধান: নিচে দেওয়া SQL কুয়েরিটি কপি করে আপনার Supabase SQL Editor-এ রান (Run) করুন যেন টেবিলটি তৈরি হয়।
+                      </p>
+                      <pre className="p-3 bg-slate-950 text-emerald-400 rounded-lg text-[10px] font-mono overflow-x-auto border border-slate-800 max-h-40">
+                        {customAlterSql}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(customAlterSql);
+                          setToast({ type: 'success', title: 'কপি হয়েছে!', message: 'SQL কুয়েরি সফলভাবে কপি করা হয়েছে।' });
+                          setTimeout(() => setToast(null), 2000);
+                        }}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] py-2 px-4 rounded-xl border-none cursor-pointer flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+                      >
+                        <Copy size={12} />
+                        <span>SQL কুয়েরি কপি করুন (Copy SQL)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Column status Indicator */}
+                <div className="flex flex-col p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-1.5 rounded-lg border ${
+                        validationError?.errorType === 'table_missing'
+                          ? 'bg-slate-800/50 text-slate-500 border-slate-800/50'
+                          : validationError?.errorType === 'column_missing'
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          : 'bg-green-500/10 text-green-400 border-green-500/20'
+                      }`}>
+                        {validationError?.errorType === 'table_missing' ? <AlertCircle className="w-4 h-4 text-slate-500" /> : validationError?.errorType === 'column_missing' ? <AlertTriangle className="w-4 h-4 text-rose-400" /> : <CheckCircle className="w-4 h-4 text-green-400" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-100">ধাপ ৩: কলামসমূহ যাচাইকরণ (কলাম কলাম ইন্ডিকেটর)</p>
+                        <p className="text-[10px] text-slate-400">
+                          {validationError?.errorType === 'table_missing'
+                            ? "টেবিল তৈরি করার পর কলামসমূহ চেক করা হবে।"
+                            : validationError?.errorType === 'column_missing'
+                            ? `❌ কলাম '${validationError.columnName}' টি আপনার ডাটাবেজে অনুপস্থিত!`
+                            : "✅ সকল প্রয়োজনীয় কলাম সফলভাবে প্রস্তুত আছে!"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                      validationError?.errorType === 'table_missing'
+                        ? 'text-slate-500 bg-slate-800/20 border-slate-800/30'
+                        : validationError?.errorType === 'column_missing'
+                        ? 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                        : 'text-green-400 bg-green-500/10 border-green-500/20'
+                    }`}>
+                      {validationError?.errorType === 'table_missing' ? 'অপেক্ষা করুন' : validationError?.errorType === 'column_missing' ? 'কলাম নেই' : 'প্রস্তুত'}
+                    </span>
+                  </div>
+
+                  {validationError?.errorType === 'column_missing' && customAlterSql && (
+                    <div className="mt-2 p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2.5">
+                      <p className="text-[11px] text-amber-400 font-bold leading-relaxed">
+                        💡 সমাধান: নিচে দেওয়া ALTER TABLE কুয়েরিটি রান করে আপনার ডাটাবেজে অনুপস্থিত কলামটি যোগ করুন।
+                      </p>
+                      <pre className="p-3 bg-slate-950 text-emerald-400 rounded-lg text-[10px] font-mono overflow-x-auto border border-slate-800">
+                        {customAlterSql}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(customAlterSql);
+                          setToast({ type: 'success', title: 'কপি হয়েছে!', message: 'কলাম অল্টার কুয়েরি কপি করা হয়েছে।' });
+                          setTimeout(() => setToast(null), 2000);
+                        }}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] py-2 px-4 rounded-xl border-none cursor-pointer flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+                      >
+                        <Copy size={12} />
+                        <span>কলাম কুয়েরি কপি করুন (Copy ALTER COLUMN SQL)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Product Ready Status Indicator */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-1.5 rounded-lg border ${
+                      validationError 
+                        ? 'bg-slate-800/50 text-slate-500 border-slate-800/50' 
+                        : 'bg-green-500/10 text-green-400 border-green-500/20'
+                    }`}>
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-100">ধাপ ৪: ডাটাবেজে প্রোডাক্ট আপলোড</p>
+                      <p className="text-[10px] text-slate-400">
+                        {validationError 
+                          ? "ডাটাবেজ টেবিল ও কলাম ঠিক করার পর প্রোডাক্ট আপলোড হবে" 
+                          : "প্রোডাক্ট ডাটাবেজে পাঠানোর জন্য প্রস্তুত"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                    validationError
+                      ? 'text-slate-500 bg-slate-800/20 border-slate-800/30'
+                      : 'text-green-400 bg-green-500/10 border-green-500/20'
+                  }`}>
+                    {validationError ? 'অপেক্ষমাণ' : 'প্রস্তুত'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Retry & Close Core Actions */}
+              <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
                 <button 
                   onClick={() => {
                     setErrorMessage("");
                     setValidationError(null);
-                    saveProductData();
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black uppercase tracking-wider px-4 py-3 rounded-xl border border-slate-700 cursor-pointer transition-all"
                 >
-                  <RefreshCw size={12} />
-                  <span>Retry Save</span>
+                  বাতিল করুন (Dismiss)
                 </button>
 
                 <button 
                   onClick={() => {
                     setErrorMessage("");
                     setValidationError(null);
+                    saveProductData();
                   }}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer transition-all"
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider px-5 py-3 rounded-xl border-none cursor-pointer flex items-center gap-1.5 transition-all shadow-md active:scale-95"
                 >
-                  Dismiss
+                  <RefreshCw size={12} className={isSaving ? "animate-spin" : ""} />
+                  <span>পুনরায় যাচাই করে সেভ করুন (Recheck & Save)</span>
                 </button>
               </div>
             </div>

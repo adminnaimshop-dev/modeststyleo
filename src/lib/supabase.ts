@@ -39,29 +39,43 @@ export function loadSupabaseConfig(): SupabaseConfig {
   let url = '';
   let key = '';
 
-  // Safe server-side check for local configuration file
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const configPaths = [
-      path.join(process.cwd(), 'local_supabase_config.json'),
-      path.join(__dirname, 'local_supabase_config.json'),
-      path.join(__dirname, '..', 'local_supabase_config.json'),
-      path.join(__dirname, '..', '..', 'local_supabase_config.json')
-    ];
-    for (const p of configPaths) {
-      if (fs.existsSync(p)) {
-        const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-        if (data.url) url = data.url;
-        if (data.key) key = data.key;
-        break;
-      }
+  // 1. Browser context localStorage check
+  if (typeof window !== 'undefined') {
+    try {
+      const storedUrl = localStorage.getItem('naimshop_supabase_url');
+      const storedKey = localStorage.getItem('naimshop_supabase_key');
+      if (storedUrl) url = storedUrl;
+      if (storedKey) key = storedKey;
+    } catch (e) {
+      console.warn('Failed to read from localStorage');
     }
-  } catch (err) {
-    // Ignore file reading errors in browser context
   }
 
-  // Fallback to environment variables if not loaded from local file
+  // 2. Safe server-side check for local configuration file
+  if (!url || !key) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const configPaths = [
+        path.join(process.cwd(), 'local_supabase_config.json'),
+        path.join(__dirname, 'local_supabase_config.json'),
+        path.join(__dirname, '..', 'local_supabase_config.json'),
+        path.join(__dirname, '..', '..', 'local_supabase_config.json')
+      ];
+      for (const p of configPaths) {
+        if (fs.existsSync(p)) {
+          const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+          if (data.url) url = data.url;
+          if (data.key) key = data.key;
+          break;
+        }
+      }
+    } catch (err) {
+      // Ignore file reading errors in browser context
+    }
+  }
+
+  // 3. Fallback to environment variables if not loaded from local file or localStorage
   if (!url || !key) {
     const envConfig = getEnvVars();
     if (!url) url = envConfig.url;
@@ -72,6 +86,16 @@ export function loadSupabaseConfig(): SupabaseConfig {
 }
 
 export function saveSupabaseConfig(config: SupabaseConfig): boolean {
+  // Browser context save
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('naimshop_supabase_url', config.url);
+      localStorage.setItem('naimshop_supabase_key', config.key);
+    } catch (e) {
+      console.error('Failed to save to localStorage:', e);
+    }
+  }
+
   if (typeof window === 'undefined' && typeof process !== 'undefined' && process.cwd) {
     try {
       const fs = require('fs');
@@ -98,7 +122,7 @@ export function saveSupabaseConfig(config: SupabaseConfig): boolean {
       return false;
     }
   }
-  return false;
+  return true;
 }
 
 export function getSupabaseClient(): SupabaseClient | null {
