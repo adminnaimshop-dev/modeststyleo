@@ -1131,19 +1131,19 @@ CREATE TABLE IF NOT EXISTS products (
         }
         
         setToast({
-          type: 'error',
-          title: '❌ ডাটাবেজ সমস্যা',
-          message: valData.message
+          type: 'warning',
+          title: '⚠️ ডাটাবেজ অসঙ্গতি',
+          message: `${valData.message} (সুপাবেজ এবং লোকাল ডাটাবেজে সেভ করা হচ্ছে...)`
         });
         
-        // Scroll container to the top
+        // Scroll container to the top so they can copy the SQL script if they want to
         const editContainer = document.getElementById("admin-product-edit-form") || document.querySelector(".max-w-4xl") || document.querySelector(".bg-white.rounded-2xl");
         if (editContainer) {
           editContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         
-        setIsSaving(false);
-        return; // BLOCK SAVING!
+        // Continue saving despite warnings - resilient backend will handle it
+        console.warn("Continuing product save despite database validation warning:", valData.message);
       }
     } catch (valErr: any) {
       console.error("Database pre-save validation error:", valErr);
@@ -1762,6 +1762,7 @@ CREATE TABLE IF NOT EXISTS products (
               onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))}
               className="w-full h-11 border border-slate-150 bg-slate-50 rounded-xl px-2.5 text-xs font-bold text-slate-800 outline-none cursor-pointer focus:bg-white focus:border-indigo-400 pointer-events-auto"
             >
+              <option value="">কোনো ক্যাটাগরি নেই (No Category)</option>
               {categories.map((cat, i) => (
                 <option key={i} value={cat}>{cat}</option>
               ))}

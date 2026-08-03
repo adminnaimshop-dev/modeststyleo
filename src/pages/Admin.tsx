@@ -2813,6 +2813,12 @@ export default function AdminPage() {
                           payload.categoryMainBanner = matchedCat.mainBanner || '';
                           payload.categorySectionBanner = matchedCat.sectionBanner || '';
                         }
+                      } else {
+                        payload.categoryId = null;
+                        payload.categorySlug = null;
+                        payload.categoryName = null;
+                        payload.categoryMainBanner = '';
+                        payload.categorySectionBanner = '';
                       }
                       const isNew = id === 'new';
                       const url = isNew ? '/api/products' : `/api/products/${id}`;
@@ -2833,8 +2839,8 @@ export default function AdminPage() {
                           name: productName,
                           title: productName,
                           category_id: payload.categoryId || null,
-                          category_slug: payload.categorySlug || "t-shirt",
-                          category_name: payload.categoryName || "T-Shirt",
+                          category_slug: payload.categorySlug || null,
+                          category_name: payload.categoryName || null,
                           brand: payload.brand || "Naim Shop",
                           description: payload.shortDescription || productName,
                           short_description: payload.shortDescription || productName,

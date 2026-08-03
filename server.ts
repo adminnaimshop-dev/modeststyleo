@@ -1234,6 +1234,14 @@ async function startServer() {
   // Create/Add new product from Admin
   app.post("/api/products", async (req, res) => {
     try {
+      console.log("📥 Incoming Product Save Request:", {
+        id: req.body.id || 'new',
+        name: req.body.name || req.body.title,
+        price: req.body.price,
+        categoryId: req.body.categoryId,
+        categoryName: req.body.categoryName,
+        imagesCount: Array.isArray(req.body.images) ? req.body.images.length : (req.body.image ? 1 : 0)
+      });
       const { 
         title, 
         name, 
@@ -1380,6 +1388,13 @@ async function startServer() {
   app.put("/api/products/:id", async (req, res) => {
     try {
       const { id } = req.params;
+      console.log(`📥 Incoming Product Update Request [ID: ${id}]:`, {
+        name: req.body.name || req.body.title,
+        price: req.body.price,
+        categoryId: req.body.categoryId,
+        categoryName: req.body.categoryName,
+        imagesCount: Array.isArray(req.body.images) ? req.body.images.length : (req.body.image ? 1 : 0)
+      });
       const { 
         title, name, price, oldPrice, categoryId, categorySlug, 
         categoryName, images, image, stock, status, views, sku, fabric, 
@@ -2094,6 +2109,13 @@ async function startServer() {
 
   app.post("/api/categories", async (req, res) => {
     try {
+      console.log("📥 Incoming Category Save Request:", {
+        id: req.body.id || 'new',
+        name: req.body.name,
+        slug: req.body.slug,
+        hasImage: !!req.body.image,
+        hasBanner: !!req.body.banner
+      });
       const {
         id,
         name,
@@ -2715,6 +2737,19 @@ Output format: You MUST output a JSON object containing two fields:
   // Return JSON 404 for any unhandled /api/* routes to prevent returning index.html
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });
+  });
+
+  // Global Express Error Handler for any synchronous or asynchronous error in /api/* routes
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (req.originalUrl.startsWith('/api') || req.path.startsWith('/api')) {
+      console.error("💥 Global Express Error Handler caught:", err);
+      return res.status(err.status || 500).json({
+        success: false,
+        error: err.name || "ServerError",
+        message: err.message || "An unexpected database or server error occurred."
+      });
+    }
+    next(err);
   });
 
   // Vite middleware for development
