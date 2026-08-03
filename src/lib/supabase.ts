@@ -39,19 +39,28 @@ export function loadSupabaseConfig(): SupabaseConfig {
   let url = '';
   let key = '';
 
-  // 1. Browser context localStorage check
-  if (typeof window !== 'undefined') {
-    try {
-      const storedUrl = localStorage.getItem('naimshop_supabase_url');
-      const storedKey = localStorage.getItem('naimshop_supabase_key');
-      if (storedUrl) url = storedUrl;
-      if (storedKey) key = storedKey;
-    } catch (e) {
-      console.warn('Failed to read from localStorage');
+  // 1. Check environment variables (on server-side/Node context, env vars ALWAYS take absolute precedence)
+  const envConfig = getEnvVars();
+  if (envConfig.url && envConfig.key) {
+    url = envConfig.url;
+    key = envConfig.key;
+  }
+
+  // 2. Browser context localStorage check
+  if (!url || !key) {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUrl = localStorage.getItem('naimshop_supabase_url');
+        const storedKey = localStorage.getItem('naimshop_supabase_key');
+        if (storedUrl) url = storedUrl;
+        if (storedKey) key = storedKey;
+      } catch (e) {
+        console.warn('Failed to read from localStorage');
+      }
     }
   }
 
-  // 2. Safe server-side check for local configuration file
+  // 3. Safe server-side check for local configuration file (fallback if env/localStorage not set)
   if (!url || !key) {
     try {
       const fs = require('fs');
@@ -65,21 +74,14 @@ export function loadSupabaseConfig(): SupabaseConfig {
       for (const p of configPaths) {
         if (fs.existsSync(p)) {
           const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-          if (data.url) url = data.url;
-          if (data.key) key = data.key;
+          if (!url && data.url) url = data.url;
+          if (!key && data.key) key = data.key;
           break;
         }
       }
     } catch (err) {
       // Ignore file reading errors in browser context
     }
-  }
-
-  // 3. Fallback to environment variables if not loaded from local file or localStorage
-  if (!url || !key) {
-    const envConfig = getEnvVars();
-    if (!url) url = envConfig.url;
-    if (!key) key = envConfig.key;
   }
 
   return { url, key };

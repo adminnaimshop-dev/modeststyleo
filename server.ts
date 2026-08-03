@@ -11,25 +11,28 @@ import { getSupabaseClient, checkSupabaseConnection, loadSupabaseConfig, saveSup
 
 function getServerSupabaseConfig(): { url: string; key: string } {
   let url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+  let key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
-  try {
-    const configPaths = [
-      path.join(process.cwd(), "local_supabase_config.json"),
-      path.join(__dirname, "local_supabase_config.json"),
-      path.join(__dirname, "..", "local_supabase_config.json"),
-      path.join(__dirname, "..", "..", "local_supabase_config.json")
-    ];
-    for (const p of configPaths) {
-      if (fs.existsSync(p)) {
-        const data = JSON.parse(fs.readFileSync(p, "utf-8"));
-        if (data.url) url = data.url;
-        if (data.key) key = data.key;
-        break;
+  // Only read from local_supabase_config.json if environment variables are not set
+  if (!url || !key) {
+    try {
+      const configPaths = [
+        path.join(process.cwd(), "local_supabase_config.json"),
+        path.join(__dirname, "local_supabase_config.json"),
+        path.join(__dirname, "..", "local_supabase_config.json"),
+        path.join(__dirname, "..", "..", "local_supabase_config.json")
+      ];
+      for (const p of configPaths) {
+        if (fs.existsSync(p)) {
+          const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+          if (!url && data.url) url = data.url;
+          if (!key && data.key) key = data.key;
+          break;
+        }
       }
+    } catch (e) {
+      console.error("Error reading server Supabase config:", e);
     }
-  } catch (e) {
-    console.error("Error reading server Supabase config:", e);
   }
 
   return { url, key };
