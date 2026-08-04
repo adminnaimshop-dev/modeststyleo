@@ -16,19 +16,17 @@ export function getApiBaseUrl(): string {
       return overrideUrl.replace(/\/$/, '');
     }
 
-    // 3. Automatically captured last known backend server origin
+    // 3. Automatically captured last known backend server origin or default production server fallback
     const lastKnownOrigin = localStorage.getItem('naimshop_last_known_server_origin');
-    if (lastKnownOrigin) {
-      // Only use the saved fallback if we are on a custom domain that doesn't have its own backend.
-      // E.g., modeststyleo.com or other domain.
-      const isCustomDomain = !window.location.hostname.endsWith('.run.app') && 
-                            !window.location.hostname.includes('localhost') && 
-                            !window.location.hostname.includes('127.0.0.1') && 
-                            !window.location.hostname.includes('gitpod') && 
-                            !window.location.hostname.includes('stackblitz');
-      if (isCustomDomain) {
-        return lastKnownOrigin.replace(/\/$/, '');
-      }
+    const isCustomDomain = !window.location.hostname.endsWith('.run.app') && 
+                          !window.location.hostname.includes('localhost') && 
+                          !window.location.hostname.includes('127.0.0.1') && 
+                          !window.location.hostname.includes('gitpod') && 
+                          !window.location.hostname.includes('stackblitz');
+    
+    if (isCustomDomain) {
+      const fallbackUrl = lastKnownOrigin || 'https://ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app';
+      return fallbackUrl.replace(/\/$/, '');
     }
   }
 
@@ -52,6 +50,70 @@ export function captureServerOrigin() {
       localStorage.setItem('naimshop_last_known_server_origin', window.location.origin);
     }
   }
+}
+
+/**
+ * Global fetch interceptor to automatically route relative API calls on custom domains to the absolute backend url.
+ */
+export function setupGlobalFetchInterceptor() {
+  if (typeof window === 'undefined') return;
+  if ((window as any).__fetchInterceptorSetup) return;
+  (window as any).__fetchInterceptorSetup = true;
+
+  const originalFetch = window.fetch;
+  window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    let url = '';
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.toString();
+    } else if (input && typeof input === 'object' && 'url' in input) {
+      url = input.url;
+    }
+
+    // Check if we are calling a relative `/api/` endpoint
+    if (url.startsWith('/api/') || url === '/api') {
+      const apiBase = getApiBaseUrl();
+      if (apiBase) {
+        // Rewrite the URL to be absolute pointing to the correct backend server
+        const absoluteUrl = `${apiBase.replace(/\/$/, '')}${url}`;
+        
+        console.log(`[Fetch Interceptor] Routing relative API call ${url} -> ${absoluteUrl}`);
+        
+        // If input is a Request object, we need to clone it with the new URL
+        if (input instanceof Request) {
+          const newRequest = new Request(absoluteUrl, {
+            method: input.method,
+            headers: input.headers,
+            body: input.body,
+            mode: 'cors',
+            credentials: input.credentials || 'include',
+            cache: input.cache,
+            redirect: input.redirect,
+            referrer: input.referrer,
+            integrity: input.integrity,
+            keepalive: input.keepalive,
+            signal: input.signal,
+          });
+          return originalFetch(newRequest, init);
+        } else {
+          const modifiedInit = {
+            ...init,
+            mode: 'cors' as const,
+            credentials: (init?.credentials || 'include') as RequestCredentials,
+          };
+          return originalFetch(absoluteUrl, modifiedInit);
+        }
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+}
+
+// Automatically setup the fetch interceptor on module load
+if (typeof window !== 'undefined') {
+  setupGlobalFetchInterceptor();
 }
 
 /**
