@@ -5,30 +5,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import BottomNav from '../components/BottomNav';
-import CategoryRow from '../components/CategoryRow';
-import CollectionBanner from '../components/CollectionBanner';
 import Header from '../components/Header';
 import HeroBanner from '../components/HeroBanner';
 import ProductCard from '../components/ProductCard';
-import SectionHeader from '../components/SectionHeader';
-import { CATEGORIES, COLLECTION_BANNERS, MAIN_HERO, PRODUCTS } from '../data';
-import { getCachedProducts, fetchProductsAndCache, getCachedCategories, getCachedBanners, fetchCategoriesAndCache, fetchBannersAndCache } from '../utils/productCache';
+import { COLLECTION_BANNERS } from '../data';
+import { getCachedProducts, fetchProductsAndCache, getCachedBanners, fetchBannersAndCache } from '../utils/productCache';
 import { Flame, SearchX, Search } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Product, Category, Banner } from '../types';
+import { Product } from '../types';
 import CustomerFooter from '../components/CustomerFooter';
-
-const getCategorySectionBgColor = (cat: any) => {
-  const nameLower = cat.name.toLowerCase();
-  if (nameLower.includes('saree')) return '#b50f4e';
-  if (nameLower.includes('polo')) return '#16a34a';
-  if (nameLower.includes('bag')) return '#8b5cf6';
-  if (nameLower.includes('punjabi')) return '#0f7eb5';
-  if (nameLower.includes('t-shirt')) return '#da5811';
-  if (nameLower.includes('shoe')) return '#4f46e5';
-  if (nameLower.includes('watch')) return '#1e293b';
-  return '#ff2f7d';
-};
 
 export default function Home() {
   const navigate = useNavigate();
@@ -37,9 +22,6 @@ export default function Home() {
 
   // Dynamic products state - initialize instantly from memory cache (with high quality static fallbacks)
   const [products, setProducts] = useState<Product[]>(getCachedProducts());
-  const [categoriesDb, setCategoriesDb] = useState<Category[]>(getCachedCategories());
-  const categories = categoriesDb.filter(c => c.status !== false);
-  const banners = COLLECTION_BANNERS;
   const [bannersDb, setBannersDb] = useState<any[]>(getCachedBanners());
 
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
@@ -99,17 +81,11 @@ export default function Home() {
 
     fetchBannersAndCache()
       .then(data => {
-        // Initial fallback
-      })
-      .catch(err => console.error(err));
-      
-    fetchCategoriesAndCache().then(data => {
         if (Array.isArray(data) && data.length) {
-          setCategoriesDb(data);
+          setBannersDb(data);
         }
       })
-      .catch(err => console.error("Error loading categories from cache/API", err));
-
+      .catch(err => console.error("Error loading banners from cache/API", err));
 
     const handleResize = () => setIsDesktop(window.innerWidth >= 768);
     window.addEventListener('resize', handleResize);
@@ -148,37 +124,7 @@ export default function Home() {
       .catch(err => console.error(err));
   };
 
-  const mainBanners = bannersDb.filter(b => b.type === "main" && b.status === true);
-
-  const categoryMainBanners = categoriesDb
-    .filter(cat => cat.status !== false && cat.mainBanner)
-    .map(cat => ({
-      id: `cat-main-${cat.id}`,
-      title: cat.name,
-      subtitle: cat.shortTitle || "Traditional Luxury Series",
-      badge: "Category Exclusive",
-      image: cat.mainBanner!,
-      bgColor: getCategorySectionBgColor(cat),
-      type: "main",
-      status: true,
-      serial: cat.serialNumber || 1,
-      categorySlug: cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-')
-    }));
-
-  const interleavedBanners = [];
-  let catIdx = 0;
-  let mainIdx = 0;
-  while (catIdx < categoryMainBanners.length || mainIdx < mainBanners.length) {
-    if (catIdx < categoryMainBanners.length) {
-      interleavedBanners.push(categoryMainBanners[catIdx]);
-      catIdx++;
-    }
-    if (mainIdx < mainBanners.length) {
-      interleavedBanners.push(mainBanners[mainIdx]);
-      mainIdx++;
-    }
-  }
-  const allMainBanners = interleavedBanners;
+  const allMainBanners = bannersDb.filter(b => b.type === "main" && b.status === true);
 
   return (
     <div className="page-container">
@@ -222,64 +168,26 @@ export default function Home() {
         ) : (
           <>
             <HeroBanner banners={allMainBanners} />
-            <CategoryRow categories={categories} />
 
             {finalFlashProducts.length > 0 && (
-              <>
-                <SectionHeader 
-                  title="Flash Sale" 
-                  icon={<Flame size={20} fill="#ff2f7d" />} 
-                  onViewAll={() => navigate('/flash-sale')}
-                />
+              <div className="mt-4">
                 <div ref={flashSaleRef} className="flash-sale-scroll">
                   {finalFlashProducts.map(p => (
                     <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p.id)} />
                   ))}
                 </div>
-              </>
+              </div>
             )}
 
-            {categories.map(cat => {
-              const catProducts = filteredProducts.filter(p => p.categoryId === cat.id);
-              if (catProducts.length === 0) return null;
-
-              const displayedCatProducts = catProducts.slice(0, 4);
-              const customSectionBanner = cat.sectionBanner || cat.mainBanner || cat.image || "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=600&q=80";
-
-              return (
-                <section key={cat.id} className="category-section">
-                  <div className="category-section-head">
-                    <h3 className="font-bold">{cat.name}</h3>
-                    <button 
-                      className="text-xs font-semibold text-primary"
-                      onClick={() => navigate(`/category/${cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-')}`)}
-                    >
-                      View All ›
-                    </button>
-                  </div>
-
-                  <div className="mb-4">
-                    <CollectionBanner 
-                      banner={{
-                        id: `cat-sec-${cat.id}`,
-                        title: cat.name,
-                        subtitle: "Premium Collection",
-                        image: customSectionBanner,
-                        bgColor: getCategorySectionBgColor(cat),
-                        type: "section",
-                        status: true
-                      }} 
-                    />
-                  </div>
-
-                  <div className="product-grid">
-                    {displayedCatProducts.map(p => (
-                      <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p.id)} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+            {filteredProducts.length > 0 && (
+              <div className="mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {filteredProducts.map(p => (
+                    <ProductCard key={p.id} product={p} onClick={() => handleProductClick(p.id)} />
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

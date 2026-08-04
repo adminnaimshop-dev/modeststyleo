@@ -6,6 +6,7 @@
 import React from 'react';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { RouteTracker } from './utils/navigation';
+import { captureServerOrigin } from './utils/api';
 import Home from './pages/Home';
 import ProductDetails from './pages/ProductDetails';
 import Reviews from './pages/Reviews';
@@ -33,6 +34,11 @@ if (typeof window !== 'undefined') {
 }
 
 export default function App() {
+  // Capture server origin if running in preview/dev environment
+  React.useEffect(() => {
+    captureServerOrigin();
+  }, []);
+
   return (
     <CompanyProvider>
       <CartProvider>

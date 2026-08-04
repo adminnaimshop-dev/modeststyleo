@@ -13,7 +13,7 @@ import {
   MessageCircle, Trash2, CheckCircle2, ChevronRight, PlusCircle, 
   Copy, ArrowUp, ArrowDown, Plus, Wallet, Banknote, ImagePlus, Upload, 
   Info, Search, Eye, Printer, ShieldAlert, BadgeInfo, Save, X, RefreshCw, Star, Check, Menu, LogOut, ClipboardX, Database, ExternalLink,
-  Server, Globe, AlertCircle, FolderTree, Edit
+  Server, Globe, AlertCircle, FolderTree, Edit, Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from '../lib/safe-motion';
 import { Product, Review, Banner, Category } from '../types';
@@ -150,6 +150,23 @@ export default function AdminPage() {
   const [catFormStatus, setCatFormStatus] = useState(true);
   const [catFormSeoTitle, setCatFormSeoTitle] = useState('');
   const [catFormSeoDescription, setCatFormSeoDescription] = useState('');
+  const [catFormParentCategory, setCatFormParentCategory] = useState('None');
+  const [catFormCategoryStatus, setCatFormCategoryStatus] = useState<'Active' | 'Inactive' | 'Hidden'>('Active');
+  const [catFormShowHomepage, setCatFormShowHomepage] = useState(false);
+  const [catFormShowCategoryBar, setCatFormShowCategoryBar] = useState(false);
+  const [catFormFeatured, setCatFormFeatured] = useState(false);
+  const [catFormSeoKeywords, setCatFormSeoKeywords] = useState('');
+
+  // Category Listing interactive states
+  const [catSearchQuery, setCatSearchQuery] = useState('');
+  const [catFilterStatus, setCatFilterStatus] = useState('All');
+  const [catFilterHomepage, setCatFilterHomepage] = useState('All');
+  const [catFilterFeatured, setCatFilterFeatured] = useState('All');
+  const [catFilterParent, setCatFilterParent] = useState('All');
+  const [catSortBy, setCatSortBy] = useState('Display Order'); // 'Newest' | 'Oldest' | 'A-Z' | 'Z-A' | 'Display Order'
+  const [catPageSize, setCatPageSize] = useState(10);
+  const [catCurrentPage, setCatCurrentPage] = useState(1);
+  const [viewingCategoryDetail, setViewingCategoryDetail] = useState<Category | null>(null);
 
   // DB Schema Check State for Category
   const [dbCheckState, setDbCheckState] = useState<{
@@ -428,6 +445,8 @@ export default function AdminPage() {
         setActiveSubpage(null);
       } else if (path.includes('/admin/categories')) {
         setActiveSubpage('categories');
+      } else if (path.includes('/admin/brands')) {
+        setActiveSubpage('brands');
       } else if (path.includes('/admin/customers')) {
         setActiveSubpage('customers');
       } else if (path.includes('/admin/messenger')) {
@@ -1388,11 +1407,9 @@ export default function AdminPage() {
     }
   };
 
-  // 18 Main action cards list configuration with exact requested names and routes
+  // 17 Main action cards list configuration with exact requested names and routes
   const menuItems = [
-    { key: 'categories', label: 'Categories', desc: 'Manage traditional genres', route: '/admin/categories', icon: <Layers size={18} className="text-[#ff2f7d]" /> },
     { key: 'customers', label: 'Customers', desc: 'Loyalty points directory', route: '/admin/customers', icon: <Users size={18} className="text-[#ff2f7d]" /> },
-    { key: 'products', label: 'Products', desc: 'Add garments & inventory', route: '/admin/products', icon: <ShoppingBag size={18} className="text-[#ff2f7d]" /> },
     { key: 'orders', label: 'Orders', desc: 'List transactions & invoices', route: '/admin/orders', icon: <ClipboardList size={18} className="text-[#ff2f7d]" /> },
     { key: 'incomplete-orders', label: 'Incomplete Orders', desc: 'Recover abandoned carts', route: '/admin/incomplete-orders', icon: <ClipboardX size={18} className="text-[#ff2f7d]" /> },
     { key: 'company', label: 'Manage Shop', desc: 'Configure store profile', route: '/admin/company', icon: <Settings size={18} className="text-[#ff2f7d]" /> },
@@ -1649,51 +1666,31 @@ export default function AdminPage() {
   // Side Drawer list components
   const adminMenuItems = [
     { title:"Dashboard", path:"/admin" },
-    { title:"Products", path:"/admin/products" },
-    { title:"Categories", path:"/admin/categories" },
+    { title:"Category", path:"/admin/categories" },
     { title:"Orders", path:"/admin/orders" },
-    { title:"Incomplete Orders", path:"/admin/incomplete-orders" },
+    { title:"Products", path:"/admin/products" },
     { title:"Customers", path:"/admin/customers" },
-    { title:"Messenger Center", path:"/admin/messenger" },
-    { title:"Banner Manager", path:"/admin/banners" },
-    { title:"Offer Manager", path:"/admin/offers" },
-    { title:"Payment Settings", path:"/admin/payments" },
-    { title:"Courier / Delivery", path:"/admin/courier" },
+    { title:"Brands", path:"/admin/brands" },
     { title:"Reviews", path:"/admin/reviews" },
-    { title:"Live Chat", path:"/admin/chat" },
-    { title:"Tracking & Analytics", path:"/admin/tracking" },
-    { title:"Social Media Links", path:"/admin/social" },
-    { title:"Company Settings", path:"/admin/company" },
-    { title:"Footer Settings", path:"/admin/footer" },
-    { title:"Account Login System", path:"/admin/auth" },
+    { title:"Payments", path:"/admin/payments" },
     { title:"Reports", path:"/admin/reports" },
-    { title:"Billing", path:"/admin/billing" },
-    { title:"Help", path:"/admin/help" }
+    { title:"Settings", path:"/admin/settings" }
   ];
 
-  const getDrawerIcon = (title: string) => {
+  const getDrawerIcon = (title: string, isActive = false) => {
+    const iconClass = isActive ? "text-white" : "text-[#ff2f7d]";
     switch(title) {
-      case "Dashboard": return <BarChart3 size={15} className="text-[#ff2f7d]" />;
-      case "Products": return <ShoppingBag size={15} className="text-[#ff2f7d]" />;
-      case "Categories": return <Layers size={15} className="text-[#ff2f7d]" />;
-      case "Orders": return <ClipboardList size={15} className="text-[#ff2f7d]" />;
-      case "Incomplete Orders": return <ClipboardX size={15} className="text-[#ff2f7d]" />;
-      case "Customers": return <Users size={15} className="text-[#ff2f7d]" />;
-      case "Messenger Center": return <MessageCircle size={15} className="text-[#ff2f7d]" />;
-      case "Banner Manager": return <ImageIcon size={15} className="text-[#ff2f7d]" />;
-      case "Offer Manager": return <Percent size={15} className="text-[#ff2f7d]" />;
-      case "Payment Settings": case "Billing": return <CreditCard size={15} className="text-[#ff2f7d]" />;
-      case "Courier / Delivery": return <Truck size={15} className="text-[#ff2f7d]" />;
-      case "Reviews": return <MessageSquare size={15} className="text-[#ff2f7d]" />;
-      case "Live Chat": return <MessageCircle size={15} className="text-[#ff2f7d]" />;
-      case "Tracking & Analytics": return <Activity size={15} className="text-[#ff2f7d]" />;
-      case "Social Media Links": return <Share2 size={15} className="text-[#ff2f7d]" />;
-      case "Company Settings": return <Settings size={15} className="text-[#ff2f7d]" />;
-      case "Footer Settings": return <Sliders size={15} className="text-[#ff2f7d]" />;
-      case "Account Login System": return <User size={15} className="text-[#ff2f7d]" />;
-      case "Reports": return <BarChart3 size={15} className="text-[#ff2f7d]" />;
-      case "Help": return <HelpCircle size={15} className="text-[#ff2f7d]" />;
-      default: return <Sliders size={15} className="text-[#ff2f7d]" />;
+      case "Dashboard": return <BarChart3 size={15} className={iconClass} />;
+      case "Category": case "Categories": return <Layers size={15} className={iconClass} />;
+      case "Orders": return <ClipboardList size={15} className={iconClass} />;
+      case "Products": return <ShoppingBag size={15} className={iconClass} />;
+      case "Customers": return <Users size={15} className={iconClass} />;
+      case "Brands": return <Tag size={15} className={iconClass} />;
+      case "Reviews": return <MessageSquare size={15} className={iconClass} />;
+      case "Payments": return <CreditCard size={15} className={iconClass} />;
+      case "Reports": return <BarChart3 size={15} className={iconClass} />;
+      case "Settings": return <Settings size={15} className={iconClass} />;
+      default: return <Sliders size={15} className={iconClass} />;
     }
   };
 
@@ -1797,29 +1794,69 @@ export default function AdminPage() {
 
                 {/* Drawer Menu Items */}
                 <div className="space-y-0.5 max-h-[75vh] overflow-y-auto pr-1">
-                  {adminMenuItems.map((item, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        navigate(item.path);
-                        setAdminMenuOpen(false);
-                      }}
-                      className="admin-drawer-item w-full text-left bg-transparent border-none hover:text-[#ff2f7d] hover:bg-slate-50 px-2 rounded-lg cursor-pointer transition-all text-slate-700 font-bold"
-                    >
-                      <span className="flex-shrink-0 flex items-center justify-center w-5">
-                        {getDrawerIcon(item.title)}
-                      </span>
-                      <span className="truncate flex-1 text-xs">{item.title}</span>
-                      <ChevronRight size={11} className="text-slate-350" />
-                    </button>
-                  ))}
+                  {adminMenuItems.map((item, idx) => {
+                    const itemSlug = item.path.replace('/admin/', '').replace('/admin', '');
+                    const isActive = (itemSlug === '' && activeSubpage === null) || (itemSlug !== '' && activeSubpage === itemSlug);
+                    return (
+                      <div key={idx} className="flex flex-col w-full">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate(item.path);
+                            if (itemSlug !== 'categories') {
+                              setAdminMenuOpen(false);
+                            }
+                          }}
+                          className={`admin-drawer-item w-full text-left bg-transparent border-none px-2 py-2 rounded-none cursor-pointer transition-all font-bold flex items-center justify-between
+                            ${isActive 
+                              ? 'text-[#ff2f7d] bg-rose-50/50' 
+                              : 'text-slate-700 hover:text-[#ff2f7d] hover:bg-slate-50'
+                            }
+                          `}
+                        >
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <span className="flex-shrink-0 flex items-center justify-center w-5">
+                              {getDrawerIcon(item.title, isActive)}
+                            </span>
+                            <span className="truncate flex-1 text-xs">{item.title}</span>
+                          </div>
+                          <ChevronRight size={11} className={`transition-transform ${isActive ? 'text-[#ff2f7d] rotate-90' : 'text-slate-350'}`} />
+                        </button>
+                        {itemSlug === 'categories' && isActive && (
+                          <div className="pl-6 space-y-0.5 mt-0.5 bg-slate-50 border-l-2 border-[#ff2f7d] py-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCategoryTab('add');
+                                setEditingCategory(null);
+                                setAdminMenuOpen(false);
+                              }}
+                              className={`w-full text-left bg-transparent border-none px-2 py-1.5 rounded-none cursor-pointer transition-all font-bold text-[11px] block ${categoryTab === 'add' ? 'text-[#ff2f7d]' : 'text-slate-600 hover:text-[#ff2f7d]'}`}
+                            >
+                              + Add Category
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCategoryTab('listing');
+                                setEditingCategory(null);
+                                setAdminMenuOpen(false);
+                              }}
+                              className={`w-full text-left bg-transparent border-none px-2 py-1.5 rounded-none cursor-pointer transition-all font-bold text-[11px] block ${categoryTab === 'listing' ? 'text-[#ff2f7d]' : 'text-slate-600 hover:text-[#ff2f7d]'}`}
+                            >
+                              • Category Listing
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   {/* New Logout Menu Item */}
                   <button
                     type="button"
                     onClick={() => setShowLogoutModal(true)}
-                    className="admin-drawer-item w-full text-left bg-transparent border-none text-rose-500 hover:text-rose-600 hover:bg-rose-50/30 px-2 rounded-lg cursor-pointer transition-all font-bold mt-2 pt-1 border-t border-slate-100/80"
+                    className="admin-drawer-item w-full text-left bg-transparent border-none text-rose-500 hover:text-rose-600 hover:bg-rose-50/30 px-2 rounded-none cursor-pointer transition-all font-bold mt-2 pt-1 border-t border-slate-100/80"
                   >
                     <span className="flex-shrink-0 flex items-center justify-center w-5">
                       <LogOut size={15} className="text-rose-500" />
@@ -1861,23 +1898,55 @@ export default function AdminPage() {
               const itemSlug = item.path.replace('/admin/', '').replace('/admin', '');
               const isActive = (itemSlug === '' && activeSubpage === null) || (itemSlug !== '' && activeSubpage === itemSlug);
               return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    navigate(item.path);
-                  }}
-                  className={`w-full text-left bg-transparent border-none px-3 py-2.5 rounded-xl cursor-pointer transition-all font-bold flex items-center gap-3 ${
-                    isActive 
-                      ? 'text-white bg-[#ff2f7d] shadow-lg shadow-[#ff2f7d]/15' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`}
-                >
-                  <span className="flex-shrink-0">
-                    {getDrawerIcon(item.title)}
-                  </span>
-                  <span className="text-xs truncate">{item.title}</span>
-                </button>
+                <div key={idx} className="flex flex-col w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(item.path);
+                    }}
+                    className={`w-full text-left bg-transparent border-none px-3 py-2.5 rounded-none cursor-pointer transition-all font-bold flex items-center gap-3 ${
+                      isActive 
+                        ? 'text-white bg-[#ff2f7d]' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <span className="flex-shrink-0">
+                      {getDrawerIcon(item.title, isActive)}
+                    </span>
+                    <span className="text-xs truncate flex-1">{item.title}</span>
+                    {itemSlug === 'categories' && (
+                      <ChevronRight size={11} className={`transition-transform ${isActive ? 'rotate-90 text-white' : 'text-slate-500'}`} />
+                    )}
+                  </button>
+                  {itemSlug === 'categories' && isActive && (
+                    <div className="pl-8 space-y-0.5 mt-0.5 bg-slate-950/20 border-l-2 border-[#ff2f7d] py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategoryTab('add');
+                          setEditingCategory(null);
+                        }}
+                        className={`w-full text-left bg-transparent border-none px-3 py-1.5 rounded-none cursor-pointer transition-all font-bold text-[11px] block ${
+                          categoryTab === 'add' ? 'text-[#ff2f7d]' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        + Add Category
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCategoryTab('listing');
+                          setEditingCategory(null);
+                        }}
+                        className={`w-full text-left bg-transparent border-none px-3 py-1.5 rounded-none cursor-pointer transition-all font-bold text-[11px] block ${
+                          categoryTab === 'listing' ? 'text-[#ff2f7d]' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        • Category Listing
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>
@@ -1887,7 +1956,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setShowLogoutModal(true)}
-              className="w-full text-left bg-transparent border-none text-rose-500 hover:text-rose-400 px-3 py-2.5 rounded-xl cursor-pointer transition-all font-bold flex items-center gap-3 hover:bg-rose-950/20"
+              className="w-full text-left bg-transparent border-none text-rose-500 hover:text-rose-400 px-3 py-2.5 rounded-none cursor-pointer transition-all font-bold flex items-center gap-3 hover:bg-rose-950/20"
             >
               <LogOut size={15} />
               <span className="text-xs">Logout</span>
@@ -3197,7 +3266,7 @@ export default function AdminPage() {
         ) : (
           /* ================= DETAILED WORKING SUBPAGES ================= */
           <div className="p-4 animate-fade-in">
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xl space-y-5">
+            <div className="bg-white border border-slate-100 rounded-none p-5 shadow-xl space-y-5">
               
               {/* Working Subpage Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -3302,324 +3371,76 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* ================= 2. SUBPAGE: PRODUCTS BAR (Extracted to primary render) ================= */}
-
-              {/* ================= 3. SUBPAGE: CATEGORIES MANAGEMENT MODULE ================= */}
-              {activeSubpage === 'categories' && (
+                 {activeSubpage === 'categories' && (
                 <div className="w-full pb-20 space-y-4 relative z-20 pointer-events-auto">
-                  {/* Category Management Page Title & Subpage Buttons - Direct on page canvas */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-300 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (editingCategory || categoryTab === 'add') {
-                            setEditingCategory(null);
-                            setCategoryTab('listing');
-                          } else {
-                            setActiveSubpage(null);
-                          }
-                        }}
-                        className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-none border border-slate-400 cursor-pointer transition-colors"
-                        title="Go Back"
-                      >
-                        <ArrowLeft size={16} />
-                      </button>
-
-                      <div>
-                        <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">Category Management</h1>
-                        <p className="text-[11px] font-semibold text-slate-500">Product Categories & System Schema Administration</p>
-                      </div>
-                    </div>
-
-                    {/* Directly Placed Side-by-Side Action Buttons */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingCategory(null);
-                          setCategoryTab('add');
-                          setCatFormName('');
-                          setCatFormSlug('');
-                          setCatFormImage('');
-                          setCatFormBanner('');
-                          setCatFormDescription('');
-                          setCatFormStatus(true);
-                          setCatFormSeoTitle('');
-                          setCatFormSeoDescription('');
-                          const maxOrder = categoriesDb.reduce((max, c) => Math.max(max, c.displayOrder || c.serialNumber || 0), 0);
-                          setCatFormDisplayOrder(maxOrder + 1);
-                        }}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-none cursor-pointer border transition-all ${
-                          (categoryTab === 'add' || editingCategory) 
-                            ? 'bg-[#ff2f7d] text-white border-[#ff2f7d]' 
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
-                        }`}
-                      >
-                        <PlusCircle size={14} />
-                        <span>Add Category</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingCategory(null);
-                          setCategoryTab('listing');
-                          loadCategoriesFromApi();
-                        }}
-                        className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-none cursor-pointer border transition-all ${
-                          (categoryTab === 'listing' && !editingCategory) 
-                            ? 'bg-[#ff2f7d] text-white border-[#ff2f7d]' 
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
-                        }`}
-                      >
-                        <FolderTree size={14} />
-                        <span>Category Listing ({categoriesDb.length})</span>
-                      </button>
-                    </div>
+                  {/* MAIN HEADER: Flat square corner box with CATEGORY title */}
+                  <div className="bg-slate-950 text-white p-5 rounded-none border-b-4 border-[#ff2f7d]">
+                    <h1 className="text-xl font-black uppercase tracking-widest text-white">CATEGORY</h1>
+                    <p className="text-[11px] font-semibold text-slate-400">Manage categories, hierarchical paths, navigation layouts, and meta SEO parameters.</p>
                   </div>
 
-                  {/* Minimal Inline Database Validation Status Bar */}
-                  {(!dbCheckState.tableExists || dbCheckState.missingColumns.length > 0 || dbCheckState.sqlScript) && (
-                    <div className="bg-slate-900 border border-slate-800 p-3 rounded-none text-white text-xs space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Database size={14} className="text-[#ff2f7d]" />
-                          <span className="font-bold uppercase text-[11px] text-slate-200">Database Schema Validation:</span>
-                          {!dbCheckState.tableExists ? (
-                            <span className="text-rose-400 font-semibold">Table missing</span>
-                          ) : dbCheckState.missingColumns.length > 0 ? (
-                            <span className="text-amber-400 font-semibold">Missing columns ({dbCheckState.missingColumns.join(', ')})</span>
-                          ) : (
-                            <span className="text-emerald-400 font-semibold">Verified</span>
-                          )}
-                        </div>
+                  {/* SIDE-BY-SIDE TABS: On the same line, active tab highlighted */}
+                  <div className="grid grid-cols-2 gap-0 border border-slate-300">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryTab('add');
+                        setViewingCategoryDetail(null);
+                        setCatFormName('');
+                        setCatFormSlug('');
+                        setCatFormImage('');
+                        setCatFormBanner('');
+                        setCatFormDescription('');
+                        setCatFormParentCategory('None');
+                        setCatFormCategoryStatus('Active');
+                        setCatFormShowHomepage(false);
+                        setCatFormShowCategoryBar(false);
+                        setCatFormFeatured(false);
+                        setCatFormSeoTitle('');
+                        setCatFormSeoDescription('');
+                        setCatFormSeoKeywords('');
+                        const maxOrder = categoriesDb.reduce((max, c) => Math.max(max, Number(c.display_order || c.displayOrder || c.serialNumber || 0)), 0);
+                        setCatFormDisplayOrder(maxOrder + 1);
+                      }}
+                      className={`py-3 text-xs font-black uppercase tracking-wider text-center cursor-pointer transition-all ${
+                        categoryTab === 'add' || editingCategory
+                          ? 'bg-[#ff2f7d] text-white'
+                          : 'bg-white text-slate-700 hover:bg-slate-50 border-r border-slate-300'
+                      }`}
+                    >
+                      ADD CATEGORY
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryTab('listing');
+                        setViewingCategoryDetail(null);
+                        loadCategoriesFromApi();
+                      }}
+                      className={`py-3 text-xs font-black uppercase tracking-wider text-center cursor-pointer transition-all ${
+                        categoryTab === 'listing' && !editingCategory
+                          ? 'bg-[#ff2f7d] text-white'
+                          : 'bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      CATEGORY LISTING ({categoriesDb.length})
+                    </button>
+                  </div>
 
-                        <div className="flex items-center gap-2">
-                          {!dbCheckState.tableExists && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setIsLoading(true);
-                                try {
-                                  const res = await fetch('/api/categories/create-table', { method: 'POST' });
-                                  const data = await res.json();
-                                  if (data.sqlScript) {
-                                    setDbCheckState(prev => ({ ...prev, sqlScript: data.sqlScript }));
-                                    showToast("📋 Table SQL generated!");
-                                  } else {
-                                    showToast("✓ Category Table Checked!");
-                                  }
-                                } catch (e) {
-                                  showToast("Table operation finished.");
-                                } finally {
-                                  setIsLoading(false);
-                                }
-                              }}
-                              className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-none border-none cursor-pointer"
-                            >
-                              Create Table
-                            </button>
-                          )}
-
-                          {dbCheckState.tableExists && dbCheckState.missingColumns.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setIsLoading(true);
-                                try {
-                                  const res = await fetch('/api/categories/add-missing-columns', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ columns: dbCheckState.missingColumns })
-                                  });
-                                  const data = await res.json();
-                                  if (data.sqlScript) {
-                                    setDbCheckState(prev => ({ ...prev, sqlScript: data.sqlScript }));
-                                    showToast("📋 Column SQL generated!");
-                                  }
-                                } catch (e) {
-                                  showToast("Column check completed.");
-                                } finally {
-                                  setIsLoading(false);
-                                }
-                              }}
-                              className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black uppercase px-2.5 py-1 rounded-none border-none cursor-pointer"
-                            >
-                              Add Columns
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              setDbCheckState(prev => ({ ...prev, checking: true }));
-                              
-                              const validateCategoriesSchemaClientSide = async () => {
-                                const client = getSupabaseClient();
-                                if (!client) {
-                                  return {
-                                    valid: false,
-                                    tableExists: false,
-                                    missingColumns: [],
-                                    message: 'Supabase client is not configured',
-                                    sqlScript: ''
-                                  };
-                                }
-
-                                try {
-                                  const { error: tableError } = await client.from('categories').select('id').limit(0);
-                                  if (tableError) {
-                                    const msg = tableError.message || '';
-                                    const code = tableError.code || '';
-                                    const isTableMissing = code === '42P01' || code === 'PGRST301' || msg.includes('relation "public.categories" does not exist') || msg.includes('relation "categories" does not exist') || msg.includes('does not exist');
-                                    if (isTableMissing) {
-                                      return {
-                                        valid: false,
-                                        tableExists: false,
-                                        missingColumns: ["id", "name", "slug", "image", "status", "serial_number"],
-                                        message: "Table 'categories' does not exist in Supabase database.",
-                                        sqlScript: `CREATE TABLE IF NOT EXISTS public.categories (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  image TEXT,
-  icon_image TEXT,
-  short_title TEXT,
-  main_banner TEXT,
-  section_banner TEXT,
-  status TEXT DEFAULT 'active',
-  serial_number INTEGER DEFAULT 0,
-  last_edited TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);`
-                                      };
-                                    }
-                                  }
-
-                                  const columnsToCheck = [
-                                    "id", "name", "image", "icon_image", "short_title", 
-                                    "main_banner", "section_banner", "status", 
-                                    "serial_number", "last_edited", "slug", "updated_at"
-                                  ];
-
-                                  const missingColumns: string[] = [];
-                                  for (const col of columnsToCheck) {
-                                    const { error: colErr } = await client.from('categories').select(col).limit(0);
-                                    if (colErr) {
-                                      const colMsg = colErr.message || '';
-                                      if (colMsg.includes('does not exist') || colMsg.includes('42703')) {
-                                        missingColumns.push(col);
-                                      }
-                                    }
-                                  }
-
-                                  if (missingColumns.length > 0) {
-                                    const alters = missingColumns.map(col => {
-                                      const isNum = col === 'serial_number';
-                                      return `ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS ${col} ${isNum ? 'INTEGER DEFAULT 0' : 'TEXT'};`;
-                                    }).join('\n');
-
-                                    return {
-                                      valid: false,
-                                      tableExists: true,
-                                      missingColumns,
-                                      message: `Missing Columns: ${missingColumns.join(', ')}`,
-                                      sqlScript: alters
-                                    };
-                                  }
-
-                                  return {
-                                    valid: true,
-                                    tableExists: true,
-                                    missingColumns: [],
-                                    message: "All columns found!",
-                                    sqlScript: ""
-                                  };
-                                } catch (err: any) {
-                                  return {
-                                    valid: true,
-                                    tableExists: true,
-                                    missingColumns: [],
-                                    message: "Client-side scan allowed",
-                                    sqlScript: ""
-                                  };
-                                }
-                              };
-
-                              try {
-                                const res = await fetch('/api/categories/validate-schema');
-                                const contentType = res.headers.get("content-type") || "";
-                                if (res.ok && contentType.includes("application/json")) {
-                                  const data = await res.json();
-                                  setDbCheckState({
-                                    checking: false,
-                                    valid: data.valid !== false,
-                                    tableExists: data.tableExists !== false,
-                                    missingColumns: data.missingColumns || [],
-                                    message: data.message || '',
-                                    sqlScript: data.sqlScript
-                                  });
-                                } else {
-                                  const clientData = await validateCategoriesSchemaClientSide();
-                                  setDbCheckState({
-                                    checking: false,
-                                    ...clientData
-                                  });
-                                }
-                                showToast("Schema re-scanned!");
-                              } catch (e) {
-                                const clientData = await validateCategoriesSchemaClientSide();
-                                setDbCheckState({
-                                  checking: false,
-                                  ...clientData
-                                });
-                                showToast("Schema re-scanned client-side!");
-                              }
-                            }}
-                            className="text-[10px] font-bold uppercase text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-none border border-slate-700 cursor-pointer flex items-center gap-1"
-                          >
-                            <RefreshCw size={10} className={dbCheckState.checking ? "animate-spin" : ""} />
-                            <span>Verify</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {dbCheckState.sqlScript && (
-                        <div className="bg-black/60 p-2 border border-slate-700 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold text-amber-400">Run SQL in Supabase SQL Editor:</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(dbCheckState.sqlScript || '');
-                                showToast("📋 SQL Copied!");
-                              }}
-                              className="bg-slate-800 text-white text-[9px] px-2 py-0.5 rounded-none border border-slate-600 cursor-pointer"
-                            >
-                              Copy
-                            </button>
-                          </div>
-                          <pre className="text-[10px] font-mono text-emerald-400 overflow-x-auto p-1.5 bg-slate-950">
-                            {dbCheckState.sqlScript}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* TAB 1: ADD / EDIT CATEGORY FORM - Rendered directly on full page width */}
+                  {/* TAB 1: ADD / EDIT CATEGORY FORM */}
                   {(categoryTab === 'add' || editingCategory) && (
                     <form onSubmit={(e) => e.preventDefault()} className="w-full space-y-4 pt-1">
                       <div className="border-b border-slate-300 pb-2 flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">
-                          {editingCategory ? "Edit Category Form" : "Add New Category Form"}
+                        <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+                          {editingCategory ? `EDIT CATEGORY: ${editingCategory.name}` : "ADD NEW CATEGORY FORM"}
                         </h3>
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">* Required Fields</span>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">* Required</span>
                       </div>
 
-                      {/* 1. Category Name & Slug */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Name */}
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
                             Category Name *
@@ -3636,33 +3457,34 @@ export default function AdminPage() {
                                 setCatFormSeoTitle(nameVal);
                               }
                             }}
-                            placeholder="e.g. Sarees & Lehengas"
+                            placeholder="e.g. Electronics, Fashion, Kids Wear"
                             className="w-full text-xs font-semibold p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
                             required
                           />
                         </div>
 
+                        {/* Slug */}
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block flex items-center justify-between">
-                            <span>Category Slug (Auto Generated) *</span>
-                            <span className="text-[9px] text-slate-400 font-normal lowercase">URL friendly identifier</span>
+                            <span>Category Slug *</span>
+                            <span className="text-[9px] text-slate-400 font-normal lowercase">URL segment</span>
                           </label>
                           <input
                             type="text"
                             value={catFormSlug}
                             onChange={(e) => setCatFormSlug(e.target.value)}
-                            placeholder="e.g. sarees-and-lehengas"
+                            placeholder="e.g. electronics"
                             className="w-full text-xs font-mono font-semibold p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-slate-50 text-slate-900"
                             required
                           />
                         </div>
                       </div>
 
-                      {/* 2. Category Image & Banner */}
+                      {/* Image & Banner */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                            Category Image (Icon / Square)
+                            Category Icon / Image
                           </label>
                           <div className="border border-slate-300 p-2.5 rounded-none bg-slate-50 space-y-2">
                             <div className="flex items-center gap-3">
@@ -3690,14 +3512,14 @@ export default function AdminPage() {
                                     className="hidden" 
                                   />
                                 </label>
-                                <p className="text-[10px] text-slate-500 font-medium">Recommended: 600 x 600 px</p>
+                                <p className="text-[10px] text-slate-500 font-medium">Square format recommended</p>
                               </div>
                             </div>
                             <input
                               type="text"
                               value={catFormImage}
                               onChange={(e) => setCatFormImage(e.target.value)}
-                              placeholder="Or enter Image URL (https://...)"
+                              placeholder="Or Image URL (https://...)"
                               className="w-full text-[11px] p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
                             />
                           </div>
@@ -3705,7 +3527,7 @@ export default function AdminPage() {
 
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                            Category Banner (Optional Wide Image)
+                            Category Banner
                           </label>
                           <div className="border border-slate-300 p-2.5 rounded-none bg-slate-50 space-y-2">
                             <div className="flex items-center gap-3">
@@ -3733,39 +3555,45 @@ export default function AdminPage() {
                                     className="hidden" 
                                   />
                                 </label>
-                                <p className="text-[10px] text-slate-500 font-medium">Recommended: 1600 x 700 px</p>
+                                <p className="text-[10px] text-slate-500 font-medium">Wide banner format</p>
                               </div>
                             </div>
                             <input
                               type="text"
                               value={catFormBanner}
                               onChange={(e) => setCatFormBanner(e.target.value)}
-                              placeholder="Or enter Banner URL (https://...)"
+                              placeholder="Or Banner URL (https://...)"
                               className="w-full text-[11px] p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
                             />
                           </div>
                         </div>
                       </div>
 
-                      {/* 3. Description */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                          Category Description
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={catFormDescription}
-                          onChange={(e) => setCatFormDescription(e.target.value)}
-                          placeholder="Write a brief description..."
-                          className="w-full text-xs font-medium p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
-                        />
-                      </div>
-
-                      {/* 4. Order & Status */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Parent Category & Display Order & Status */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                            Display Order (Serial Number)
+                            Parent Category
+                          </label>
+                          <select
+                            value={catFormParentCategory}
+                            onChange={(e) => setCatFormParentCategory(e.target.value)}
+                            className="w-full text-xs font-semibold p-2.5 border border-slate-300 rounded-none bg-white text-slate-900 outline-none focus:border-[#ff2f7d]"
+                          >
+                            <option value="None">None (Root Category)</option>
+                            {categoriesDb
+                              .filter(c => c.id !== editingCategory?.id)
+                              .map(c => (
+                                <option key={c.id} value={c.category_name || c.name}>
+                                  {c.category_name || c.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                            Display Order (Serial)
                           </label>
                           <input
                             type="number"
@@ -3778,54 +3606,114 @@ export default function AdminPage() {
 
                         <div className="space-y-1">
                           <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                            Status (Active / Inactive)
+                            Category Status
                           </label>
-                          <div className="flex items-center gap-2">
-                            <label className={`flex-1 p-2.5 border rounded-none cursor-pointer flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-all ${
-                              catFormStatus ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-slate-50 border-slate-300 text-slate-600'
-                            }`}>
-                              <input type="radio" name="catStatusRadio" checked={catFormStatus === true} onChange={() => setCatFormStatus(true)} className="accent-emerald-600" />
-                              <span>Active</span>
-                            </label>
-
-                            <label className={`flex-1 p-2.5 border rounded-none cursor-pointer flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-all ${
-                              !catFormStatus ? 'bg-rose-50 border-rose-500 text-rose-800' : 'bg-slate-50 border-slate-300 text-slate-600'
-                            }`}>
-                              <input type="radio" name="catStatusRadio" checked={catFormStatus === false} onChange={() => setCatFormStatus(false)} className="accent-rose-600" />
-                              <span>Inactive</span>
-                            </label>
-                          </div>
+                          <select
+                            value={catFormCategoryStatus}
+                            onChange={(e) => setCatFormCategoryStatus(e.target.value as any)}
+                            className="w-full text-xs font-semibold p-2.5 border border-slate-300 rounded-none bg-white text-slate-900 outline-none focus:border-[#ff2f7d]"
+                          >
+                            <option value="Active">Active (Visible)</option>
+                            <option value="Inactive">Inactive (Disabled)</option>
+                            <option value="Hidden">Hidden (Not on customer screens)</option>
+                          </select>
                         </div>
                       </div>
 
-                      {/* 5. SEO Settings */}
-                      <div className="border-t border-slate-300 pt-3 space-y-2">
-                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">SEO Meta Settings</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Features Checkboxes (Show Homepage, Category Bar, Featured) */}
+                      <div className="bg-slate-50 p-4 border border-slate-300 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={catFormShowHomepage}
+                            onChange={(e) => setCatFormShowHomepage(e.target.checked)}
+                            className="w-4 h-4 accent-[#ff2f7d]"
+                          />
+                          <div>
+                            <span className="text-xs font-black uppercase text-slate-800 block">Show on Homepage</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Display on Home Sections</span>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={catFormShowCategoryBar}
+                            onChange={(e) => setCatFormShowCategoryBar(e.target.checked)}
+                            className="w-4 h-4 accent-[#ff2f7d]"
+                          />
+                          <div>
+                            <span className="text-xs font-black uppercase text-slate-800 block">Show in Category Bar</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Place in top header bar</span>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={catFormFeatured}
+                            onChange={(e) => setCatFormFeatured(e.target.checked)}
+                            className="w-4 h-4 accent-[#ff2f7d]"
+                          />
+                          <div>
+                            <span className="text-xs font-black uppercase text-slate-800 block">Featured Category</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Highlight with rich accents</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* Description */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                          Category Description
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={catFormDescription}
+                          onChange={(e) => setCatFormDescription(e.target.value)}
+                          placeholder="Provide a brief introductory description..."
+                          className="w-full text-xs font-medium p-2.5 border border-slate-300 rounded-none outline-none focus:border-[#ff2f7d] bg-white text-slate-900"
+                        />
+                      </div>
+
+                      {/* SEO Settings */}
+                      <div className="border border-slate-300 p-4 bg-slate-50 space-y-3">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-1">SEO SEARCH OPTIMIZATION</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div className="space-y-1">
-                            <label className="text-[11px] font-black uppercase text-slate-600 block">SEO Title</label>
+                            <label className="text-[10px] font-black uppercase text-slate-700 block">SEO Meta Title</label>
                             <input
                               type="text"
                               value={catFormSeoTitle}
                               onChange={(e) => setCatFormSeoTitle(e.target.value)}
-                              placeholder="SEO Meta Title"
+                              placeholder="e.g. High Quality Electronic Products"
                               className="w-full text-xs font-medium p-2 border border-slate-300 rounded-none bg-white text-slate-900"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[11px] font-black uppercase text-slate-600 block">SEO Description</label>
+                            <label className="text-[10px] font-black uppercase text-slate-700 block">SEO Meta Description</label>
                             <input
                               type="text"
                               value={catFormSeoDescription}
                               onChange={(e) => setCatFormSeoDescription(e.target.value)}
-                              placeholder="SEO Meta Description"
+                              placeholder="SEO description tag"
+                              className="w-full text-xs font-medium p-2 border border-slate-300 rounded-none bg-white text-slate-900"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700 block">SEO Keywords</label>
+                            <input
+                              type="text"
+                              value={catFormSeoKeywords}
+                              onChange={(e) => setCatFormSeoKeywords(e.target.value)}
+                              placeholder="e.g. electronics, appliances, online shop"
                               className="w-full text-xs font-medium p-2 border border-slate-300 rounded-none bg-white text-slate-900"
                             />
                           </div>
                         </div>
                       </div>
 
-                      {/* Action Buttons */}
+                      {/* Action buttons */}
                       <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-300">
                         <button
                           type="button"
@@ -3835,7 +3723,6 @@ export default function AdminPage() {
                               showToast("❌ Category Name is required!");
                               return;
                             }
-
                             setIsLoading(true);
                             try {
                               const finalImageUrl = await uploadImageToServer(catFormImage, 'categories');
@@ -3843,22 +3730,32 @@ export default function AdminPage() {
 
                               const payload = {
                                 id: editingCategory?.id,
-                                name: catFormName.trim(),
+                                category_name: catFormName.trim(),
                                 slug: catFormSlug || catFormName.trim().toLowerCase().replace(/\s+/g, '-'),
+                                image_url: finalImageUrl,
+                                banner_url: finalBannerUrl,
+                                parent_category: catFormParentCategory,
+                                display_order: catFormDisplayOrder,
+                                category_status: catFormCategoryStatus,
+                                show_homepage: catFormShowHomepage,
+                                show_category_bar: catFormShowCategoryBar,
+                                featured: catFormFeatured,
+                                seo_title: catFormSeoTitle,
+                                seo_description: catFormSeoDescription,
+                                seo_keywords: catFormSeoKeywords,
+                                description: catFormDescription,
+                                createdAt: editingCategory?.createdAt || new Date().toLocaleDateString('en-US'),
+
+                                // compatibility keys
+                                name: catFormName.trim(),
+                                banner: finalBannerUrl,
                                 image: finalImageUrl,
                                 iconImage: finalImageUrl,
-                                banner: finalBannerUrl,
-                                mainBanner: finalBannerUrl,
-                                description: catFormDescription,
-                                displayOrder: catFormDisplayOrder,
-                                status: catFormStatus,
-                                seoTitle: catFormSeoTitle,
-                                seoDescription: catFormSeoDescription,
-                                createdAt: editingCategory?.createdAt || new Date().toLocaleDateString('en-US')
+                                status: catFormCategoryStatus !== 'Inactive' && catFormCategoryStatus !== 'Hidden',
+                                serialNumber: catFormDisplayOrder
                               };
 
                               await CategoryService.createCategory(payload);
-
                               showToast(`✓ Category Saved Successfully!`);
                               setEditingCategory(null);
                               setCatFormName('');
@@ -3866,10 +3763,14 @@ export default function AdminPage() {
                               setCatFormImage('');
                               setCatFormBanner('');
                               setCatFormDescription('');
-                              setCatFormStatus(true);
+                              setCatFormParentCategory('None');
+                              setCatFormCategoryStatus('Active');
+                              setCatFormShowHomepage(false);
+                              setCatFormShowCategoryBar(false);
+                              setCatFormFeatured(false);
                               setCatFormSeoTitle('');
                               setCatFormSeoDescription('');
-
+                              setCatFormSeoKeywords('');
                               setCategoryTab('listing');
                               loadCategoriesFromApi();
                             } catch (err: any) {
@@ -3884,7 +3785,7 @@ export default function AdminPage() {
                           }`}
                         >
                           {isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                          <span>{editingCategory ? "Update Category" : "Save Category"}</span>
+                          <span>{editingCategory ? "UPDATE CATEGORY" : "SAVE CATEGORY"}</span>
                         </button>
 
                         <button
@@ -3895,10 +3796,15 @@ export default function AdminPage() {
                             setCatFormImage('');
                             setCatFormBanner('');
                             setCatFormDescription('');
-                            setCatFormDisplayOrder(1);
-                            setCatFormStatus(true);
+                            setCatFormParentCategory('None');
+                            setCatFormCategoryStatus('Active');
+                            setCatFormShowHomepage(false);
+                            setCatFormShowCategoryBar(false);
+                            setCatFormFeatured(false);
                             setCatFormSeoTitle('');
                             setCatFormSeoDescription('');
+                            setCatFormSeoKeywords('');
+                            setCatFormDisplayOrder(1);
                             showToast("Form cleared.");
                           }}
                           className="px-5 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-none border border-slate-300 cursor-pointer transition-colors"
@@ -3920,190 +3826,532 @@ export default function AdminPage() {
                     </form>
                   )}
 
-                  {/* TAB 2: CATEGORY LISTING TABLE - Rendered directly on full page width */}
-                  {(categoryTab === 'listing' && !editingCategory) && (
-                    <div className="w-full space-y-2">
-                      <div className="flex items-center justify-between border-b border-slate-300 pb-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-800">
-                          Registered Categories ({categoriesDb.length})
-                        </span>
+                  {/* SPECIFICATION OVERVIEW CARD */}
+                  {viewingCategoryDetail && (
+                    <div className="bg-slate-950 border border-slate-800 text-white p-4 space-y-4 rounded-none">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-xs font-black uppercase text-slate-300 tracking-wider">CATEGORY VIEW DETAILS</span>
                         <button
                           type="button"
-                          onClick={() => loadCategoriesFromApi()}
-                          className="bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-bold uppercase px-2.5 py-1 border border-slate-300 rounded-none cursor-pointer flex items-center gap-1"
+                          onClick={() => setViewingCategoryDetail(null)}
+                          className="text-[10px] font-black uppercase px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-none cursor-pointer border border-slate-700"
                         >
-                          <RefreshCw size={11} />
-                          <span>Refresh Table</span>
+                          Close Details
                         </button>
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-300 rounded-none bg-white">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-100 border-b border-slate-300 text-[10px] font-black uppercase tracking-wider text-slate-700">
-                              <th className="p-2.5 border-r border-slate-300 w-12 text-center">ID</th>
-                              <th className="p-2.5 border-r border-slate-300 w-14 text-center">Image</th>
-                              <th className="p-2.5 border-r border-slate-300">Category Name</th>
-                              <th className="p-2.5 border-r border-slate-300">Slug</th>
-                              <th className="p-2.5 border-r border-slate-300 text-center w-20">Status</th>
-                              <th className="p-2.5 border-r border-slate-300 text-center w-24">Display Order</th>
-                              <th className="p-2.5 border-r border-slate-300 w-28">Created Date</th>
-                              <th className="p-2.5 text-center w-24">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 text-xs">
-                            {categoriesDb.length === 0 ? (
-                              <tr>
-                                <td colSpan={8} className="p-8 text-center text-slate-500 font-bold bg-white">
-                                  No categories found. Click "Add Category" above to create your first category!
-                                </td>
-                              </tr>
-                            ) : (
-                              [...categoriesDb]
-                                .sort((a,b) => (Number(a.displayOrder || a.serialNumber) || 99) - (Number(b.displayOrder || b.serialNumber) || 99))
-                                .map((cat, idx) => (
-                                  <tr key={cat.id || idx} className="hover:bg-slate-50 transition-colors">
-                                    <td className="p-2.5 border-r border-slate-300 font-mono text-[10px] text-slate-500 text-center">
-                                      #{cat.id?.substring(0, 8) || (idx + 1)}
-                                    </td>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                        <div className="space-y-2 border border-slate-800 p-2 text-center bg-slate-900">
+                          <span className="text-[10px] font-black text-slate-500 uppercase block">Icon / Image</span>
+                          {(viewingCategoryDetail.image_url || viewingCategoryDetail.image) ? (
+                            <img src={viewingCategoryDetail.image_url || viewingCategoryDetail.image} alt="Icon" className="w-16 h-16 object-cover mx-auto border border-slate-800" />
+                          ) : <div className="text-slate-600 font-bold italic">No icon</div>}
+                          
+                          <span className="text-[10px] font-black text-slate-500 uppercase block pt-1 border-t border-slate-800">Banner</span>
+                          {(viewingCategoryDetail.banner_url || viewingCategoryDetail.banner) ? (
+                            <img src={viewingCategoryDetail.banner_url || viewingCategoryDetail.banner} alt="Banner" className="w-full h-12 object-cover border border-slate-800" />
+                          ) : <div className="text-slate-600 font-bold italic">No banner</div>}
+                        </div>
 
-                                    <td className="p-1.5 border-r border-slate-300 text-center">
-                                      {cat.image || cat.iconImage ? (
-                                        <img 
-                                          src={cat.image || cat.iconImage} 
-                                          alt={cat.name} 
-                                          className="w-9 h-9 object-cover border border-slate-300 rounded-none mx-auto bg-white"
-                                        />
-                                      ) : (
-                                        <div className="w-9 h-9 border border-slate-300 rounded-none bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                                          <ImageIcon size={14} />
-                                        </div>
-                                      )}
-                                    </td>
-
-                                    <td className="p-2.5 border-r border-slate-300 font-bold text-slate-900">
-                                      {cat.name}
-                                    </td>
-
-                                    <td className="p-2.5 border-r border-slate-300 font-mono text-[11px] text-[#ff2f7d]">
-                                      /{cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-')}
-                                    </td>
-
-                                    <td className="p-2.5 border-r border-slate-300 text-center">
-                                      {cat.status !== false ? (
-                                        <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none inline-block">
-                                          Active
-                                        </span>
-                                      ) : (
-                                        <span className="bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none inline-block">
-                                          Inactive
-                                        </span>
-                                      )}
-                                    </td>
-
-                                    <td className="p-2.5 border-r border-slate-300 text-center font-bold text-slate-800">
-                                      #{cat.displayOrder || cat.serialNumber || 1}
-                                    </td>
-
-                                    <td className="p-2.5 border-r border-slate-300 text-[11px] text-slate-600 font-medium">
-                                      {cat.createdAt || cat.updatedAt || "Jul 25, 2026"}
-                                    </td>
-
-                                    <td className="p-2 text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setEditingCategory(cat);
-                                            setCatFormName(cat.name);
-                                            setCatFormSlug(cat.slug || cat.name.toLowerCase().replace(/\s+/g, '-'));
-                                            setCatFormImage(cat.image || cat.iconImage || '');
-                                            setCatFormBanner(cat.banner || cat.mainBanner || '');
-                                            setCatFormDescription(cat.description || '');
-                                            setCatFormDisplayOrder(cat.displayOrder || cat.serialNumber || 1);
-                                            setCatFormStatus(cat.status !== false);
-                                            setCatFormSeoTitle(cat.seoTitle || cat.name);
-                                            setCatFormSeoDescription(cat.seoDescription || cat.description || '');
-                                            setCategoryTab('add');
-                                          }}
-                                          className="p-1.5 bg-slate-100 hover:bg-[#ff2f7d] text-slate-700 hover:text-white border border-slate-300 rounded-none cursor-pointer transition-colors"
-                                          title="Edit Category"
-                                        >
-                                          <Edit size={13} />
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setCategoryToDelete(cat);
-                                          }}
-                                          className="p-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-none cursor-pointer transition-colors"
-                                          title="Delete Category"
-                                        >
-                                          <Trash2 size={13} />
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Delete Confirmation Modal Dialog */}
-                  {categoryToDelete && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                      <div className="bg-white border-2 border-slate-900 p-5 rounded-none max-w-md w-full shadow-2xl space-y-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-rose-100 border border-rose-300 rounded-none flex items-center justify-center shrink-0 text-rose-600">
-                            <Trash2 size={20} />
+                        <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 p-3 border border-slate-800 bg-slate-900 font-semibold text-slate-300">
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Name</span>
+                            <span className="text-white text-sm font-black">{viewingCategoryDetail.category_name || viewingCategoryDetail.name}</span>
                           </div>
                           <div>
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">Confirm Category Deletion</h3>
-                            <p className="text-xs text-slate-600 font-medium mt-1">
-                              Are you sure you want to delete category <strong className="text-slate-900">"{categoryToDelete.name}"</strong>?
-                            </p>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Slug Path</span>
+                            <span className="text-[#ff2f7d] font-mono">/{viewingCategoryDetail.slug}</span>
                           </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                          <button
-                            type="button"
-                            onClick={() => setCategoryToDelete(null)}
-                            className="px-4 py-2 text-xs font-bold uppercase text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-none border border-slate-300 cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isLoading}
-                            onClick={async () => {
-                              setIsLoading(true);
-                              try {
-                                await CategoryService.deleteCategory(categoryToDelete.id);
-                                showToast("✓ Category deleted successfully!");
-                                setCategoryToDelete(null);
-                                loadCategoriesFromApi();
-                              } catch (e) {
-                                showToast("❌ Delete category error");
-                              } finally {
-                                setIsLoading(false);
-                              }
-                            }}
-                            className="px-4 py-2 text-xs font-black uppercase text-white bg-rose-600 hover:bg-rose-700 rounded-none border-none cursor-pointer flex items-center gap-1.5"
-                          >
-                            {isLoading ? <RefreshCw size={12} className="animate-spin" /> : null}
-                            <span>Delete Category</span>
-                          </button>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Parent Path</span>
+                            <span className="text-slate-200">{viewingCategoryDetail.parent_category || viewingCategoryDetail.parentCategory || "None (Root)"}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Display Order</span>
+                            <span className="text-white">#{viewingCategoryDetail.display_order || viewingCategoryDetail.displayOrder || viewingCategoryDetail.serialNumber}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Status Level</span>
+                            <span className="text-white font-bold">{viewingCategoryDetail.category_status || (viewingCategoryDetail.status !== false ? 'Active' : 'Inactive')}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Show Homepage</span>
+                            <span>{viewingCategoryDetail.show_homepage || viewingCategoryDetail.showHomepage ? 'YES' : 'NO'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Show Category Bar</span>
+                            <span>{viewingCategoryDetail.show_category_bar || viewingCategoryDetail.showCategoryBar ? 'YES' : 'NO'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Featured Status</span>
+                            <span>{viewingCategoryDetail.featured ? 'YES' : 'NO'}</span>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <span className="text-[9px] font-black text-slate-500 uppercase block">Description</span>
+                            <span className="font-medium text-slate-400">{viewingCategoryDetail.description || 'No description provided'}</span>
+                          </div>
+                          <div className="sm:col-span-2 border-t border-slate-800 pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase block">SEO Title</span>
+                              <span className="font-normal text-slate-400">{viewingCategoryDetail.seo_title || viewingCategoryDetail.seoTitle || "Not Configured"}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase block">SEO Description</span>
+                              <span className="font-normal text-slate-400">{viewingCategoryDetail.seo_description || viewingCategoryDetail.seoDescription || "Not Configured"}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase block">SEO Keywords</span>
+                              <span className="font-normal text-slate-400">{viewingCategoryDetail.seo_keywords || "Not Configured"}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   )}
-                </div>
-              )}
+
+                  {/* TAB 2: CATEGORY LISTING TAB */}
+                  {(categoryTab === 'listing' && !editingCategory) && (
+                    <div className="w-full space-y-3">
+                      {/* Search, Filter, Sort Controls Panel */}
+                      <div className="bg-slate-50 border border-slate-300 p-3 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                          {/* Search */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Search Keywords</label>
+                            <input
+                              type="text"
+                              value={catSearchQuery}
+                              onChange={(e) => { setCatSearchQuery(e.target.value); setCatCurrentPage(1); }}
+                              placeholder="Search categories..."
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            />
+                          </div>
+
+                          {/* Filter Status */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Filter Status</label>
+                            <select
+                              value={catFilterStatus}
+                              onChange={(e) => { setCatFilterStatus(e.target.value); setCatCurrentPage(1); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value="All">All Statuses</option>
+                              <option value="Active">Active</option>
+                              <option value="Inactive">Inactive</option>
+                              <option value="Hidden">Hidden</option>
+                            </select>
+                          </div>
+
+                          {/* Filter Homepage */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">On Homepage</label>
+                            <select
+                              value={catFilterHomepage}
+                              onChange={(e) => { setCatFilterHomepage(e.target.value); setCatCurrentPage(1); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value="All">All</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </div>
+
+                          {/* Filter Featured */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Is Featured</label>
+                            <select
+                              value={catFilterFeatured}
+                              onChange={(e) => { setCatFilterFeatured(e.target.value); setCatCurrentPage(1); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value="All">All</option>
+                              <option value="Yes">Yes</option>
+                              <option value="No">No</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5 pt-2 border-t border-slate-200">
+                          {/* Filter Parent */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Parent Path</label>
+                            <select
+                              value={catFilterParent}
+                              onChange={(e) => { setCatFilterParent(e.target.value); setCatCurrentPage(1); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value="All">All Parents</option>
+                              <option value="None">None (Root)</option>
+                              {Array.from(new Set(categoriesDb.map(c => c.parent_category || c.parentCategory || 'None')))
+                                .filter(p => p && p !== 'None')
+                                .map(parentName => (
+                                  <option key={parentName} value={parentName}>{parentName}</option>
+                                ))}
+                            </select>
+                          </div>
+
+                          {/* Sort By */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Sort Ordering</label>
+                            <select
+                              value={catSortBy}
+                              onChange={(e) => { setCatSortBy(e.target.value); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value="Display Order">Display Order</option>
+                              <option value="Newest">Newest First</option>
+                              <option value="Oldest">Oldest First</option>
+                              <option value="A-Z">A-Z Name</option>
+                              <option value="Z-A">Z-A Name</option>
+                            </select>
+                          </div>
+
+                          {/* Pagination Page Size */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase text-slate-700">Page Size</label>
+                            <select
+                              value={catPageSize}
+                              onChange={(e) => { setCatPageSize(Number(e.target.value)); setCatCurrentPage(1); }}
+                              className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-none bg-white outline-none focus:border-[#ff2f7d]"
+                            >
+                              <option value={10}>10 Items</option>
+                              <option value={25}>25 Items</option>
+                              <option value={50}>50 Items</option>
+                              <option value={100}>100 Items</option>
+                            </select>
+                          </div>
+
+                          {/* Reset Filters button */}
+                          <div className="flex items-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCatSearchQuery('');
+                                setCatFilterStatus('All');
+                                setCatFilterHomepage('All');
+                                setCatFilterFeatured('All');
+                                setCatFilterParent('All');
+                                setCatSortBy('Display Order');
+                                setCatCurrentPage(1);
+                              }}
+                              className="w-full text-xs font-black uppercase tracking-wider py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300 rounded-none cursor-pointer transition-colors"
+                            >
+                              Clear Filter
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Filtered, Sorted and Paginated Logic */}
+                      {(() => {
+                        const filtered = [...categoriesDb].filter(cat => {
+                          const q = catSearchQuery.toLowerCase().trim();
+                          if (q) {
+                            const nameMatch = (cat.category_name || cat.name || '').toLowerCase().includes(q);
+                            const slugMatch = (cat.slug || '').toLowerCase().includes(q);
+                            const descMatch = (cat.description || '').toLowerCase().includes(q);
+                            if (!nameMatch && !slugMatch && !descMatch) return false;
+                          }
+                          if (catFilterStatus !== 'All') {
+                            const statusVal = cat.category_status || (cat.status !== false ? 'Active' : 'Inactive');
+                            if (statusVal !== catFilterStatus) return false;
+                          }
+                          if (catFilterHomepage !== 'All') {
+                            const showHome = cat.show_homepage === true || cat.show_homepage === 'true' || !!cat.showHomepage;
+                            if ((catFilterHomepage === 'Yes') !== showHome) return false;
+                          }
+                          if (catFilterFeatured !== 'All') {
+                            const featured = cat.featured === true || cat.featured === 'true';
+                            if ((catFilterFeatured === 'Yes') !== featured) return false;
+                          }
+                          if (catFilterParent !== 'All') {
+                            const parent = cat.parent_category || cat.parentCategory || 'None';
+                            if (parent !== catFilterParent) return false;
+                          }
+                          return true;
+                        }).sort((a, b) => {
+                          if (catSortBy === 'Newest') return new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime();
+                          if (catSortBy === 'Oldest') return new Date(a.createdAt || a.created_at || 0).getTime() - new Date(b.createdAt || b.created_at || 0).getTime();
+                          if (catSortBy === 'A-Z') return (a.category_name || a.name || '').localeCompare(b.category_name || b.name || '');
+                          if (catSortBy === 'Z-A') return (b.category_name || b.name || '').localeCompare(a.category_name || a.name || '');
+                          const orderA = Number(a.display_order || a.displayOrder || a.serialNumber || 999);
+                          const orderB = Number(b.display_order || b.displayOrder || b.serialNumber || 999);
+                          return orderA - orderB;
+                        });
+
+                        const totalPages = Math.ceil(filtered.length / catPageSize);
+                        const curPage = Math.min(catCurrentPage, totalPages || 1);
+                        const startIdx = (curPage - 1) * catPageSize;
+                        const paginated = filtered.slice(startIdx, startIdx + catPageSize);
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="overflow-x-auto border border-slate-300 rounded-none bg-white">
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-100 border-b border-slate-300 text-[10px] font-black uppercase tracking-wider text-slate-700">
+                                    <th className="p-2.5 border-r border-slate-300 w-12 text-center">SL</th>
+                                    <th className="p-2.5 border-r border-slate-300 w-14 text-center">Image</th>
+                                    <th className="p-2.5 border-r border-slate-300">Category Name</th>
+                                    <th className="p-2.5 border-r border-slate-300">Slug</th>
+                                    <th className="p-2.5 border-r border-slate-300">Parent</th>
+                                    <th className="p-2.5 border-r border-slate-300 text-center w-20">Home</th>
+                                    <th className="p-2.5 border-r border-slate-300 text-center w-20">Bar</th>
+                                    <th className="p-2.5 border-r border-slate-300 text-center w-20">Featured</th>
+                                    <th className="p-2.5 border-r border-slate-300 text-center w-24">Status</th>
+                                    <th className="p-2.5 border-r border-slate-300 w-28">Created Date</th>
+                                    <th className="p-2 text-center w-36">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 text-xs">
+                                  {paginated.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={11} className="p-8 text-center text-slate-500 font-bold bg-white">
+                                        No categories found matching criteria.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    paginated.map((cat, idx) => {
+                                      const sl = startIdx + idx + 1;
+                                      const statusText = cat.category_status || (cat.status !== false ? 'Active' : 'Inactive');
+                                      return (
+                                        <tr key={cat.id || idx} className="hover:bg-slate-50 transition-colors">
+                                          <td className="p-2.5 border-r border-slate-300 font-bold text-slate-500 text-center">
+                                            {sl}
+                                          </td>
+
+                                          <td className="p-1.5 border-r border-slate-300 text-center">
+                                            {(cat.image || cat.image_url || cat.iconImage) ? (
+                                              <img 
+                                                src={cat.image || cat.image_url || cat.iconImage} 
+                                                alt={cat.name} 
+                                                className="w-8 h-8 object-cover border border-slate-300 rounded-none mx-auto bg-white"
+                                              />
+                                            ) : (
+                                              <div className="w-8 h-8 border border-slate-300 rounded-none bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                                                <ImageIcon size={12} />
+                                              </div>
+                                            )}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 font-black text-slate-900">
+                                            {cat.category_name || cat.name}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 font-mono text-[11px] text-[#ff2f7d]">
+                                            /{cat.slug}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-slate-600 font-medium">
+                                            {cat.parent_category || cat.parentCategory || "None"}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-center">
+                                            {(cat.show_homepage || cat.showHomepage) ? (
+                                              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">YES</span>
+                                            ) : (
+                                              <span className="bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">NO</span>
+                                            )}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-center">
+                                            {(cat.show_category_bar || cat.showCategoryBar) ? (
+                                              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">YES</span>
+                                            ) : (
+                                              <span className="bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">NO</span>
+                                            )}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-center">
+                                            {cat.featured ? (
+                                              <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">YES</span>
+                                            ) : (
+                                              <span className="bg-slate-50 text-slate-400 border border-slate-200 px-1.5 py-0.5 text-[8px] font-black rounded-none">NO</span>
+                                            )}
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-center">
+                                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none inline-block border ${
+                                              statusText === 'Active'
+                                                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                                : statusText === 'Inactive'
+                                                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                                                : 'bg-slate-100 border-slate-300 text-slate-700'
+                                            }`}>
+                                              {statusText}
+                                            </span>
+                                          </td>
+
+                                          <td className="p-2.5 border-r border-slate-300 text-[11px] text-slate-500 font-bold">
+                                            {cat.createdAt || cat.created_at || "N/A"}
+                                          </td>
+
+                                          <td className="p-1.5 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                              {/* View details */}
+                                              <button
+                                                type="button"
+                                                onClick={() => setViewingCategoryDetail(cat)}
+                                                className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-none cursor-pointer"
+                                                title="View Specification Details"
+                                              >
+                                                <Eye size={12} />
+                                              </button>
+
+                                              {/* Edit */}
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setEditingCategory(cat);
+                                                  setCatFormName(cat.category_name || cat.name || '');
+                                                  setCatFormSlug(cat.slug || '');
+                                                  setCatFormImage(cat.image_url || cat.image || '');
+                                                  setCatFormBanner(cat.banner_url || cat.banner || '');
+                                                  setCatFormDescription(cat.description || '');
+                                                  setCatFormDisplayOrder(Number(cat.display_order || cat.displayOrder || cat.serialNumber) || 1);
+                                                  setCatFormParentCategory(cat.parent_category || cat.parentCategory || 'None');
+                                                  setCatFormCategoryStatus((cat.category_status || (cat.status !== false ? 'Active' : 'Inactive')) as any);
+                                                  setCatFormShowHomepage(cat.show_homepage === true || cat.show_homepage === 'true' || !!cat.showHomepage);
+                                                  setCatFormShowCategoryBar(cat.show_category_bar === true || cat.show_category_bar === 'true' || !!cat.showCategoryBar);
+                                                  setCatFormFeatured(cat.featured === true || cat.featured === 'true');
+                                                  setCatFormSeoTitle(cat.seo_title || cat.seoTitle || '');
+                                                  setCatFormSeoDescription(cat.seo_description || cat.seoDescription || '');
+                                                  setCatFormSeoKeywords(cat.seo_keywords || '');
+                                                  setCategoryTab('add');
+                                                }}
+                                                className="p-1 bg-slate-100 hover:bg-slate-200 text-[#ff2f7d] border border-slate-300 rounded-none cursor-pointer"
+                                                title="Edit"
+                                              >
+                                                <Edit size={12} />
+                                              </button>
+
+                                              {/* Enable/Disable Toggle */}
+                                              <button
+                                                type="button"
+                                                onClick={async () => {
+                                                  setIsLoading(true);
+                                                  try {
+                                                    const nextStatus = statusText === 'Active' ? 'Inactive' : 'Active';
+                                                    const payload = {
+                                                      ...cat,
+                                                      category_status: nextStatus,
+                                                      status: nextStatus === 'Active',
+                                                      // standard mapping variables
+                                                      name: cat.category_name || cat.name,
+                                                      slug: cat.slug,
+                                                      image_url: cat.image_url || cat.image,
+                                                      banner_url: cat.banner_url || cat.banner
+                                                    };
+                                                    await CategoryService.createCategory(payload);
+                                                    showToast(`✓ Status updated to ${nextStatus}!`);
+                                                    loadCategoriesFromApi();
+                                                  } catch (e) {
+                                                    showToast("❌ Status update failed");
+                                                  } finally {
+                                                    setIsLoading(false);
+                                                  }
+                                                }}
+                                                className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-none cursor-pointer text-[10px] font-black uppercase"
+                                                title="Toggle Status"
+                                              >
+                                                {statusText === 'Active' ? 'Disable' : 'Enable'}
+                                              </button>
+
+                                              {/* Delete */}
+                                              <button
+                                                type="button"
+                                                onClick={() => setCategoryToDelete(cat)}
+                                                className="p-1 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 rounded-none cursor-pointer"
+                                                title="Delete"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Pagination Buttons */}
+                            {totalPages > 1 && (
+                              <div className="flex items-center justify-end gap-1.5 pt-2">
+                                <button
+                                  type="button"
+                                  disabled={curPage === 1}
+                                  onClick={() => setCatCurrentPage(p => Math.max(1, p - 1))}
+                                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-slate-300 text-slate-700 disabled:opacity-40 rounded-none cursor-pointer"
+                                >
+                                  Prev
+                                </button>
+                                <span className="text-xs font-bold text-slate-800 px-2">
+                                  Page {curPage} of {totalPages}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={curPage === totalPages}
+                                  onClick={() => setCatCurrentPage(p => Math.min(totalPages, p + 1))}
+                                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider bg-white border border-slate-300 text-slate-700 disabled:opacity-40 rounded-none cursor-pointer"
+                                >
+                                  Next
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Inline Delete Confirmation Dialog (Flat shapes, square corner, no modal popup unless confirmation requested) */}
+                  {categoryToDelete && (
+                    <div className="bg-[#fff1f2] border-2 border-rose-600 p-4 space-y-3 rounded-none">
+                      <div className="flex items-start gap-2.5">
+                        <Trash2 className="text-rose-600 shrink-0" size={18} />
+                        <div>
+                          <h4 className="text-xs font-black uppercase text-rose-950">Confirm Category Deletion</h4>
+                          <p className="text-[11px] text-rose-900 font-semibold mt-0.5">
+                            Are you absolutely sure you want to delete category <strong className="text-rose-950 font-black">"{categoryToDelete.category_name || categoryToDelete.name}"</strong>?
+                            Any matching products will no longer display under this category.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 border-t border-rose-200 pt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setCategoryToDelete(null)}
+                          className="px-4 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-none cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={async () => {
+                            setIsLoading(true);
+                            try {
+                              await CategoryService.deleteCategory(categoryToDelete.id);
+                              showToast("✓ Category deleted successfully!");
+                              setCategoryToDelete(null);
+                              loadCategoriesFromApi();
+                            } catch (e) {
+                              showToast("❌ Deletion failed.");
+                            } finally {
+                              setIsLoading(false);
+                          }
+                        }}
+                        className="px-4 py-1.5 text-[10px] font-black uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 rounded-none cursor-pointer border-none"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
               {/* ================= 4. SUBPAGE: ORDERS (REMOVED: Rendered as full page above) ================= */}
 
@@ -5094,12 +5342,13 @@ export default function AdminPage() {
                         <select
                           value={reviewSettings.maxImages || 2}
                           onChange={(e) => handleSaveReviewSettings({ ...reviewSettings, maxImages: Number(e.target.value) })}
-                          className="h-8 border border-slate-200 bg-white rounded-lg px-2 text-xs font-black focus:outline-none focus:border-[#ff2f7d]"
+                          className="h-8 border border-slate-200 bg-white text-slate-800 rounded-lg px-2 text-xs font-black focus:outline-none focus:border-[#ff2f7d]"
+                          style={{ color: '#1e293b', backgroundColor: '#ffffff' }}
                         >
-                          <option value={1}>1 Image</option>
-                          <option value={2}>2 Images</option>
-                          <option value={3}>3 Images</option>
-                          <option value={4}>4 Images</option>
+                          <option value={1} className="text-slate-800 bg-white" style={{ color: '#1e293b', backgroundColor: '#ffffff' }}>1 Image</option>
+                          <option value={2} className="text-slate-800 bg-white" style={{ color: '#1e293b', backgroundColor: '#ffffff' }}>2 Images</option>
+                          <option value={3} className="text-slate-800 bg-white" style={{ color: '#1e293b', backgroundColor: '#ffffff' }}>3 Images</option>
+                          <option value={4} className="text-slate-800 bg-white" style={{ color: '#1e293b', backgroundColor: '#ffffff' }}>4 Images</option>
                         </select>
                       </div>
                     </div>
@@ -5787,6 +6036,62 @@ export default function AdminPage() {
                 </div>
               )}
 
+              {/* ================= 14B. SUBPAGE: BRANDS ================= */}
+              {activeSubpage === 'brands' && (
+                <div className="space-y-4 text-xs">
+                  <div className="bg-slate-900 text-white p-5 rounded-none border-b-4 border-[#ff2f7d]">
+                    <h1 className="text-sm font-black uppercase tracking-widest text-white">BRANDS MANAGEMENT</h1>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Configure Active Collections & Brand Affiliates</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="border border-slate-200 p-4 rounded-none bg-white space-y-3 shadow-sm">
+                      <h3 className="text-[10px] font-extrabold uppercase text-[#ff2f7d] tracking-wider">Active Brand Directory</h3>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between p-2.5 border border-slate-100 rounded-none bg-slate-50">
+                          <div>
+                            <span className="font-extrabold text-slate-900 block">NaimShop Premium</span>
+                            <span className="text-[10px] text-slate-500 font-bold">Classic Panjabi & Premium Saree Collections</span>
+                          </div>
+                          <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 text-[9px] font-extrabold uppercase">Primary</span>
+                        </div>
+                        <div className="flex items-center justify-between p-2.5 border border-slate-100 rounded-none bg-slate-50">
+                          <div>
+                            <span className="font-extrabold text-slate-900 block">Modest Style Co.</span>
+                            <span className="text-[10px] text-slate-500 font-bold">Traditional Bangladeshi Handloom</span>
+                          </div>
+                          <span className="bg-[#ff2f7d]/10 text-[#ff2f7d] px-2 py-0.5 text-[9px] font-extrabold uppercase">Active</span>
+                        </div>
+                        <div className="flex items-center justify-between p-2.5 border border-slate-100 rounded-none bg-slate-50">
+                          <div>
+                            <span className="font-extrabold text-slate-900 block">Tangail Silk Weavers</span>
+                            <span className="text-[10px] text-slate-500 font-bold">Authentic Jamdani & Silk Sarees</span>
+                          </div>
+                          <span className="bg-[#ff2f7d]/10 text-[#ff2f7d] px-2 py-0.5 text-[9px] font-extrabold uppercase">Active</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-slate-200 p-4 rounded-none bg-white space-y-3 shadow-sm">
+                      <h3 className="text-[10px] font-extrabold uppercase text-[#ff2f7d] tracking-wider">Register Brand Partner</h3>
+                      <form onSubmit={(e) => { e.preventDefault(); showToast("✨ Brand partner registered successfully!"); }} className="space-y-3">
+                        <div>
+                          <label className="text-[9px] text-slate-500 uppercase block font-bold mb-1">Brand Name *</label>
+                          <input required type="text" placeholder="e.g. Traditional Pure Cotton" className="w-full text-xs font-semibold p-2.5 border border-slate-200 rounded-none bg-white text-slate-900 outline-none focus:border-[#ff2f7d]" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-500 uppercase block font-bold mb-1">Brand Origin / Description</label>
+                          <input type="text" placeholder="e.g. Handcrafted Tangail Saree Manufacturers" className="w-full text-xs font-semibold p-2.5 border border-slate-200 rounded-none bg-white text-slate-900 outline-none focus:border-[#ff2f7d]" />
+                        </div>
+                        <button type="submit" className="w-full py-2.5 bg-[#ff2f7d] hover:bg-rose-600 text-white font-black uppercase tracking-wider cursor-pointer border-none rounded-none text-[10px]">
+                          Save Brand Partner
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ================= 15. SUBPAGE: REPORTS ================= */}
               {activeSubpage === 'reports' && (
                 <div className="space-y-4">
@@ -6001,15 +6306,15 @@ export default function AdminPage() {
       {/* ================= BOTTOM ADMIN NAVIGATION BAR ================= */}
       <footer className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-900 text-white shadow-2xl h-16 border-t border-slate-800 z-[1001] flex items-center justify-around px-4">
         
-        {/* Hotkey: Products (Instantly opens Products subpage) */}
+        {/* Hotkey: Customers (Instantly opens Customers subpage) */}
         <button 
           onClick={() => {
-            navigate('/admin/products');
+            navigate('/admin/customers');
           }}
-          className={`flex flex-col items-center gap-0.5 bg-transparent border-none cursor-pointer p-1 transition-all ${activeSubpage === 'products' ? 'text-[#ff2f7d]' : 'text-slate-400 hover:text-white'}`}
+          className={`flex flex-col items-center gap-0.5 bg-transparent border-none cursor-pointer p-1 transition-all ${activeSubpage === 'customers' ? 'text-[#ff2f7d]' : 'text-slate-400 hover:text-white'}`}
         >
-          <ShoppingBag size={18} />
-          <span className="text-[10px] font-black tracking-tight uppercase">Products</span>
+          <Users size={18} />
+          <span className="text-[10px] font-black tracking-tight uppercase">Customers</span>
         </button>
 
         {/* Hotkey: Home (Center button, returns to main admin grid) */}

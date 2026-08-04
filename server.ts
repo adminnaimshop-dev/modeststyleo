@@ -243,6 +243,21 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+  // Enable CORS for all requests to support cross-origin API calls from custom domains (like modeststyleo.com)
+  app.use((req, res, next) => {
+    const origin = req.headers.origin || "*";
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+
+    // Instantly respond to CORS preflight OPTIONS requests
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   // Robust middleware to strip trailing slashes from API requests so they never fall through to SPA index.html
   app.use((req, res, next) => {
     if (req.url.startsWith('/api') && req.url.length > 4) {
@@ -1653,27 +1668,35 @@ async function startServer() {
   async function upsertCategoryToSupabase(supabase: any, fullData: Record<string, any>) {
     const payload: Record<string, any> = {
       id: fullData.id,
-      name: fullData.catName,
       category_name: fullData.catName,
       slug: fullData.cleanSlug,
+      image_url: fullData.imgVal,
+      banner_url: fullData.bannerVal,
+      parent_category: fullData.parentCategory || "None",
+      display_order: Number(fullData.orderVal) || 1,
+      status: fullData.categoryStatus || "Active",
+      show_homepage: !!fullData.showHomepage,
+      show_category_bar: !!fullData.showCategoryBar,
+      featured: !!fullData.featured,
+      seo_title: fullData.seoTitle || fullData.catName,
+      seo_description: fullData.seoDescription || "",
+      seo_keywords: fullData.seoKeywords || "",
+      created_at: fullData.createdAt || fullData.nowStr,
+      updated_at: fullData.nowStr,
+
+      // Fallbacks/Compatibility
+      name: fullData.catName,
       image: fullData.imgVal,
       icon_image: fullData.imgVal,
       banner: fullData.bannerVal,
       main_banner: fullData.bannerVal,
-      section_banner: fullData.sectionBanner || "",
       description: fullData.description || "",
-      status: fullData.status !== undefined ? !!fullData.status : true,
-      display_order: fullData.orderVal,
-      serial_number: fullData.orderVal,
-      seo_title: fullData.seoTitle || fullData.catName,
-      seo_description: fullData.seoDescription || fullData.description || fullData.catName,
-      created_at: fullData.createdAt || fullData.nowStr,
-      updated_at: fullData.nowStr,
+      serial_number: Number(fullData.orderVal) || 1,
       last_edited: fullData.nowStr,
       short_title: fullData.catName
     };
 
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       const { error } = await supabase.from('categories').upsert(payload);
       if (!error) {
         return { success: true, error: null };
@@ -1961,13 +1984,13 @@ async function startServer() {
             id: String(c.id || ''),
             name: c.category_name || c.name || "Category",
             slug: c.slug || ("cat-" + c.id),
-            iconImage: c.image || c.icon_image || '',
-            image: c.image || c.icon_image || '',
-            banner: c.banner || c.main_banner || '',
-            mainBanner: c.main_banner || c.banner || '',
+            iconImage: c.image_url || c.image || c.icon_image || '',
+            image: c.image_url || c.image || c.icon_image || '',
+            banner: c.banner_url || c.banner || c.main_banner || '',
+            mainBanner: c.banner_url || c.banner || c.main_banner || '',
             sectionBanner: c.section_banner || '',
             description: c.description || '',
-            status: c.status !== false,
+            status: c.status !== false && c.status !== 'Inactive' && c.status !== 'Hidden',
             serialNumber: c.display_order || c.serial_number || 1,
             displayOrder: c.display_order || c.serial_number || 1,
             lastEdited: c.updated_at || c.last_edited || '',
@@ -1975,7 +1998,19 @@ async function startServer() {
             createdAt: c.created_at || c.updated_at || '',
             shortTitle: c.short_title || c.category_name || c.name || '',
             seoTitle: c.seo_title || '',
-            seoDescription: c.seo_description || ''
+            seoDescription: c.seo_description || '',
+
+            // Exact requested fields to map from database to object
+            category_name: c.category_name || c.name || "Category",
+            image_url: c.image_url || c.image || c.icon_image || '',
+            banner_url: c.banner_url || c.banner || c.main_banner || '',
+            parent_category: c.parent_category || "None",
+            display_order: c.display_order || c.serial_number || 1,
+            category_status: c.status || (c.status === false ? "Inactive" : "Active"),
+            show_homepage: c.show_homepage === true || c.show_homepage === 'true',
+            show_category_bar: c.show_category_bar === true || c.show_category_bar === 'true',
+            featured: c.featured === true || c.featured === 'true',
+            seo_keywords: c.seo_keywords || ''
           }));
 
           // If database is empty but we have local categories, auto-sync/upload them to database
@@ -1984,16 +2019,20 @@ async function startServer() {
             for (const cat of localCategories) {
               await upsertCategoryToSupabase(supabase, {
                 id: cat.id,
-                catName: cat.name,
+                catName: cat.category_name || cat.name,
                 cleanSlug: cat.slug,
-                imgVal: cat.image,
-                bannerVal: cat.banner,
-                sectionBanner: cat.sectionBanner,
+                imgVal: cat.image_url || cat.image,
+                bannerVal: cat.banner_url || cat.banner,
+                parentCategory: cat.parent_category || "None",
+                showHomepage: cat.show_homepage,
+                showCategoryBar: cat.show_category_bar,
+                featured: cat.featured,
+                seoKeywords: cat.seo_keywords,
                 description: cat.description,
-                status: cat.status,
-                orderVal: cat.displayOrder || cat.serialNumber,
-                seoTitle: cat.seoTitle,
-                seoDescription: cat.seoDescription,
+                status: cat.category_status || (cat.status !== false ? "Active" : "Inactive"),
+                orderVal: cat.display_order || cat.displayOrder || cat.serialNumber,
+                seoTitle: cat.seoTitle || cat.seo_title,
+                seoDescription: cat.seoDescription || cat.seo_description,
                 createdAt: cat.createdAt,
                 nowStr: cat.updatedAt || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
               });
@@ -2009,16 +2048,20 @@ async function startServer() {
                 console.log(`Auto-syncing missing local category ${localCat.name} to database...`);
                 await upsertCategoryToSupabase(supabase, {
                   id: localCat.id,
-                  catName: localCat.name,
+                  catName: localCat.category_name || localCat.name,
                   cleanSlug: localCat.slug,
-                  imgVal: localCat.image,
-                  bannerVal: localCat.banner,
-                  sectionBanner: localCat.sectionBanner,
+                  imgVal: localCat.image_url || localCat.image,
+                  bannerVal: localCat.banner_url || localCat.banner,
+                  parentCategory: localCat.parent_category || "None",
+                  showHomepage: localCat.show_homepage,
+                  showCategoryBar: localCat.show_category_bar,
+                  featured: localCat.featured,
+                  seoKeywords: localCat.seo_keywords,
                   description: localCat.description,
-                  status: localCat.status,
-                  orderVal: localCat.displayOrder || localCat.serialNumber,
-                  seoTitle: localCat.seoTitle,
-                  seoDescription: localCat.seoDescription,
+                  status: localCat.category_status || (localCat.status !== false ? "Active" : "Inactive"),
+                  orderVal: localCat.display_order || localCat.displayOrder || localCat.serialNumber,
+                  seoTitle: localCat.seoTitle || localCat.seo_title,
+                  seoDescription: localCat.seoDescription || localCat.seo_description,
                   createdAt: localCat.createdAt,
                   nowStr: localCat.updatedAt || new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
                 });
@@ -2114,30 +2157,43 @@ async function startServer() {
     try {
       console.log("📥 Incoming Category Save Request:", {
         id: req.body.id || 'new',
-        name: req.body.name,
+        name: req.body.category_name || req.body.name,
         slug: req.body.slug,
-        hasImage: !!req.body.image,
-        hasBanner: !!req.body.banner
+        hasImage: !!req.body.image_url || !!req.body.image,
+        hasBanner: !!req.body.banner_url || !!req.body.banner
       });
       const {
         id,
         name,
+        category_name,
         slug: customSlug,
         image,
-        iconImage,
+        image_url,
         banner,
-        mainBanner,
-        sectionBanner,
-        description,
+        banner_url,
+        parent_category,
+        parentCategory,
+        display_order,
         displayOrder,
         serialNumber,
         status,
+        category_status,
+        show_homepage,
+        showHomepage,
+        show_category_bar,
+        showCategoryBar,
+        featured,
+        seo_title,
         seoTitle,
+        seo_description,
         seoDescription,
+        seo_keywords,
+        seoKeywords,
+        description,
         createdAt
       } = req.body;
       
-      const catName = (name || "").trim();
+      const catName = (category_name || name || "").trim();
       if (!catName) {
         return res.status(400).json({ error: "Category Name is required", message: "Category Name is required" });
       }
@@ -2148,7 +2204,7 @@ async function startServer() {
       const nowStr = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 
       // Duplicate Name & Duplicate Slug Prevention (When creating new or renaming)
-      const existingNameIndex = localCategories.findIndex(c => c.id !== catId && c.name.toLowerCase() === catName.toLowerCase());
+      const existingNameIndex = localCategories.findIndex(c => c.id !== catId && (c.category_name || c.name || '').toLowerCase() === catName.toLowerCase());
       if (existingNameIndex !== -1) {
         return res.status(400).json({
           error: "Duplicate Category Name",
@@ -2164,9 +2220,120 @@ async function startServer() {
         });
       }
 
-      const orderVal = displayOrder !== undefined ? Number(displayOrder) : serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1);
-      const imgVal = image || iconImage || "";
-      const bannerVal = banner || mainBanner || "";
+      const orderVal = display_order !== undefined ? Number(display_order) : displayOrder !== undefined ? Number(displayOrder) : serialNumber !== undefined ? Number(serialNumber) : (localCategories.length + 1);
+      const imgVal = image_url || image || "";
+      const bannerVal = banner_url || banner || "";
+      const parentCatVal = parent_category || parentCategory || "None";
+      const catStatusVal = category_status || status || "Active";
+      const showHomeVal = show_homepage !== undefined ? !!show_homepage : showHomepage !== undefined ? !!showHomepage : false;
+      const showBarVal = show_category_bar !== undefined ? !!show_category_bar : showCategoryBar !== undefined ? !!showCategoryBar : false;
+      const featuredVal = featured !== undefined ? !!featured : false;
+      const seoTitleVal = seo_title || seoTitle || catName;
+      const seoDescVal = seo_description || seoDescription || description || "";
+      const seoKeysVal = seo_keywords || seoKeywords || "";
+
+      // 1. AUTOMATIC DATABASE SETUP AND VERIFICATION LOGIC (As requested by user!)
+      let dbStatus = {
+        connected: false,
+        tableExists: false,
+        columnsVerified: false,
+        missingColumns: [] as string[],
+        createdTable: false,
+        createdColumns: [] as string[]
+      };
+
+      const supabase = getBackendSupabaseClient() || getSupabaseClient();
+      if (supabase) {
+        dbStatus.connected = true;
+        // Verify or create table
+        try {
+          const { error: selectError } = await supabase.from('categories').select('id').limit(1);
+          if (!selectError) {
+            dbStatus.tableExists = true;
+          } else {
+            const errMsg = selectError.message || '';
+            const errCode = selectError.code || '';
+            const isTableMissing = errCode === '42P01' || errCode === 'PGRST301' || errMsg.includes('relation "public.categories" does not exist') || errMsg.includes('relation "categories" does not exist') || errMsg.includes('does not exist');
+            if (isTableMissing) {
+              // Try to create table via RPC
+              const createSql = `
+                CREATE TABLE IF NOT EXISTS public.categories (
+                  id TEXT PRIMARY KEY,
+                  category_name TEXT NOT NULL,
+                  slug TEXT UNIQUE NOT NULL,
+                  image_url TEXT,
+                  banner_url TEXT,
+                  parent_category TEXT DEFAULT 'None',
+                  display_order INTEGER DEFAULT 1,
+                  status TEXT DEFAULT 'Active',
+                  show_homepage BOOLEAN DEFAULT false,
+                  show_category_bar BOOLEAN DEFAULT false,
+                  featured BOOLEAN DEFAULT false,
+                  seo_title TEXT,
+                  seo_description TEXT,
+                  seo_keywords TEXT,
+                  created_at TEXT,
+                  updated_at TEXT
+                );
+              `;
+              const { error: createErr } = await supabase.rpc('exec_sql', { sql_create: createSql });
+              if (!createErr) {
+                dbStatus.tableExists = true;
+                dbStatus.createdTable = true;
+              }
+            } else {
+              dbStatus.tableExists = true;
+            }
+          }
+        } catch (tableErr) {
+          console.warn("Exception checking categories table presence:", tableErr);
+        }
+
+        // Verify columns and create missing columns automatically
+        if (dbStatus.tableExists) {
+          const requiredColumns = [
+            { name: "id", type: "TEXT" },
+            { name: "category_name", type: "TEXT" },
+            { name: "slug", type: "TEXT" },
+            { name: "image_url", type: "TEXT" },
+            { name: "banner_url", type: "TEXT" },
+            { name: "parent_category", type: "TEXT" },
+            { name: "display_order", type: "INTEGER" },
+            { name: "status", type: "TEXT" },
+            { name: "show_homepage", type: "BOOLEAN" },
+            { name: "show_category_bar", type: "BOOLEAN" },
+            { name: "featured", type: "BOOLEAN" },
+            { name: "seo_title", type: "TEXT" },
+            { name: "seo_description", type: "TEXT" },
+            { name: "seo_keywords", type: "TEXT" },
+            { name: "created_at", type: "TEXT" },
+            { name: "updated_at", type: "TEXT" }
+          ];
+
+          for (const col of requiredColumns) {
+            try {
+              const { error: colErr } = await supabase.from('categories').select(col.name).limit(1);
+              if (colErr) {
+                const errMsg = colErr.message || '';
+                if (errMsg.includes('does not exist') || colErr.code === '42703') {
+                  dbStatus.missingColumns.push(col.name);
+                  
+                  // Try to add column via RPC
+                  const alterSql = `ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS ${col.name} ${col.type};`;
+                  const { error: alterErr } = await supabase.rpc('exec_sql', { sql_query: alterSql });
+                  if (!alterErr) {
+                    dbStatus.createdColumns.push(col.name);
+                  }
+                }
+              }
+            } catch (colCheckErr) {
+              console.warn(`Exception verifying column ${col.name}:`, colCheckErr);
+            }
+          }
+
+          dbStatus.columnsVerified = dbStatus.missingColumns.length === 0 || dbStatus.missingColumns.every(c => dbStatus.createdColumns.includes(c));
+        }
+      }
 
       const formattedCategory = {
         id: catId,
@@ -2176,22 +2343,35 @@ async function startServer() {
         iconImage: imgVal,
         banner: bannerVal,
         mainBanner: bannerVal,
-        sectionBanner: sectionBanner || "",
+        sectionBanner: "",
         description: description || "",
-        status: status !== undefined ? !!status : true,
+        status: catStatusVal !== "Inactive" && catStatusVal !== "Hidden",
         serialNumber: orderVal,
         displayOrder: orderVal,
-        seoTitle: seoTitle || catName,
-        seoDescription: seoDescription || description || catName,
+        seoTitle: seoTitleVal,
+        seoDescription: seoDescVal,
         createdAt: createdAt || nowStr,
         updatedAt: nowStr,
         lastEdited: nowStr,
-        shortTitle: catName
+        shortTitle: catName,
+
+        // Exact requested fields
+        category_name: catName,
+        image_url: imgVal,
+        banner_url: bannerVal,
+        parent_category: parentCatVal,
+        display_order: orderVal,
+        category_status: catStatusVal,
+        show_homepage: showHomeVal,
+        show_category_bar: showBarVal,
+        featured: featuredVal,
+        seo_keywords: seoKeysVal,
+        created_at: createdAt || nowStr,
+        updated_at: nowStr
       };
 
       // RESILIENT DB SYNC IF SUPABASE / DATABASE IS CONNECTED
       let dbSynced = false;
-      const supabase = getBackendSupabaseClient() || getSupabaseClient();
       if (supabase) {
         try {
           const dbResult = await upsertCategoryToSupabase(supabase, {
@@ -2200,13 +2380,16 @@ async function startServer() {
             cleanSlug,
             imgVal,
             bannerVal,
-            sectionBanner,
-            description,
-            status,
+            parentCategory: parentCatVal,
             orderVal,
-            seoTitle,
-            seoDescription,
-            createdAt,
+            categoryStatus: catStatusVal,
+            showHomepage: showHomeVal,
+            showCategoryBar: showBarVal,
+            featured: featuredVal,
+            seoTitle: seoTitleVal,
+            seoDescription: seoDescVal,
+            seoKeywords: seoKeysVal,
+            createdAt: createdAt,
             nowStr
           });
 
@@ -2245,7 +2428,7 @@ async function startServer() {
       });
       persistProducts();
 
-      res.status(200).json({ ...formattedCategory, dbSynced });
+      res.status(200).json({ ...formattedCategory, dbSynced, dbStatus });
     } catch (err: any) {
       console.error("Error in POST /api/categories:", err);
       res.status(500).json({ error: "Failed to save category", message: err.message });

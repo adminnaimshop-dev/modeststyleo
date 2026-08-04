@@ -1,22 +1,28 @@
 import type { Category } from '../types';
+import { getApiBaseUrl, safeParseJson } from '../utils/api';
 
 export const CategoryService = {
   async getCategories(): Promise<Category[]> {
-    const res = await fetch('/api/categories');
+    const baseUrl = getApiBaseUrl();
+    const requestUrl = `${baseUrl}/api/categories`;
+    const res = await fetch(requestUrl);
+    
+    const rawText = await res.text();
     if (!res.ok) {
-      const err = await res.text();
-      console.error('Error fetching categories from API:', err);
+      console.error('Error fetching categories from API:', rawText);
       throw new Error(`Failed to fetch categories: ${res.status}`);
     }
-    const data = await res.json();
+    
+    const data = await safeParseJson(res, rawText);
     return data || [];
   },
 
   async createCategory(category: Partial<Category>): Promise<Category> {
     let res: Response;
-    const requestUrl = window.location.origin + '/api/categories';
+    const baseUrl = getApiBaseUrl();
+    const requestUrl = `${baseUrl}/api/categories`;
     try {
-      res = await fetch('/api/categories', {
+      res = await fetch(requestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(category)
@@ -44,13 +50,7 @@ export const CategoryService = {
     console.log("Response Body (Raw):", rawText);
     console.groupEnd();
 
-    let data;
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch (err) {
-      console.error("❌ [Category API Diagnostic] Failed to parse JSON response:", rawText);
-      throw new Error(`Server returned invalid response (${res.status}): ${rawText.substring(0, 100)}`);
-    }
+    const data = await safeParseJson(res, rawText);
 
     if (!res.ok) {
       console.error('❌ [Category API Diagnostic] Error creating category via API:', data);
@@ -65,13 +65,16 @@ export const CategoryService = {
   },
 
   async deleteCategory(id: string): Promise<void> {
-    const res = await fetch(`/api/categories/${id}`, {
+    const baseUrl = getApiBaseUrl();
+    const requestUrl = `${baseUrl}/api/categories/${id}`;
+    const res = await fetch(requestUrl, {
       method: 'DELETE'
     });
 
+    const rawText = await res.text();
     if (!res.ok) {
       let data;
-      try { data = await res.json(); } catch(e) {}
+      try { data = await safeParseJson(res, rawText); } catch(e) {}
       console.error('Error deleting category via API:', data);
       throw new Error(data?.message || data?.error || 'Failed to delete category');
     }

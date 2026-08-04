@@ -5,6 +5,7 @@ import { COMBINED_SUPABASE_SQL } from '../../lib/supabase-schema';
 export default function DatabaseSetup() {
   const [url, setUrl] = useState('');
   const [key, setKey] = useState('');
+  const [apiBaseUrl, setApiBaseUrl] = useState('');
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -13,6 +14,8 @@ export default function DatabaseSetup() {
 
   useEffect(() => {
     fetchConfig();
+    const storedApiBase = localStorage.getItem('naimshop_api_base_url') || '';
+    setApiBaseUrl(storedApiBase);
   }, []);
 
   const fetchConfig = async () => {
@@ -35,6 +38,14 @@ export default function DatabaseSetup() {
   const handleSave = async () => {
     setTesting(true);
     setMessage({ text: 'Testing connection to Supabase...', type: 'info' });
+    
+    // Save API base URL custom override
+    if (apiBaseUrl.trim()) {
+      localStorage.setItem('naimshop_api_base_url', apiBaseUrl.trim());
+    } else {
+      localStorage.removeItem('naimshop_api_base_url');
+    }
+
     try {
       const res = await fetch('/api/supabase/update-config', {
         method: 'POST',
@@ -43,7 +54,7 @@ export default function DatabaseSetup() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ text: 'Success! Connected to Supabase PostgreSQL Database.', type: 'success' });
+        setMessage({ text: 'Success! Connected to Supabase PostgreSQL Database & updated configuration.', type: 'success' });
         setConnected(true);
       } else {
         setMessage({ text: `Connection Failed: ${data.error || 'Check credentials'}`, type: 'error' });
@@ -122,6 +133,22 @@ export default function DatabaseSetup() {
             onChange={e => setKey(e.target.value)}
             placeholder="eyJhY2Nlc3NfdG9rZW4iOi..."
           />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            <Globe className="w-4 h-4 text-indigo-600" /> Backend API Base URL Override (Optional)
+          </label>
+          <input 
+            type="text"
+            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono"
+            value={apiBaseUrl} 
+            onChange={e => setApiBaseUrl(e.target.value)}
+            placeholder="e.g. https://ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app"
+          />
+          <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">
+            Leave blank to use the same host (relative path). Highly recommended to set this when hosting the compiled frontend static files separately (such as on Hostinger or cPanel) while keeping the full-stack container running on Cloud Run.
+          </p>
         </div>
 
         <div className="pt-2 flex flex-wrap items-center justify-between gap-4">

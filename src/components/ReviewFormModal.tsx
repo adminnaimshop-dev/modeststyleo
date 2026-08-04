@@ -237,7 +237,7 @@ export default function ReviewFormModal({ isOpen, onClose, productId, productNam
               placeholder="আপনার নাম লিখুন..."
               value={custName}
               onChange={e => setCustName(e.target.value)}
-              className="w-full h-10 border border-gray-200 bg-white rounded-xl px-3 text-xs focus:outline-none focus:border-[#ff2f7d] focus:ring-1 focus:ring-[#ff2f7d] transition-all font-bold"
+              className="w-full h-10 border border-gray-200 bg-white text-gray-800 rounded-xl px-3 text-xs focus:outline-none focus:border-[#ff2f7d] focus:ring-1 focus:ring-[#ff2f7d] transition-all font-bold"
               required
             />
           </div>
@@ -269,7 +269,7 @@ export default function ReviewFormModal({ isOpen, onClose, productId, productNam
               value={custText}
               onChange={e => setCustText(e.target.value)}
               rows={4}
-              className="w-full border border-gray-200 bg-white rounded-xl p-3 text-xs focus:outline-none focus:border-[#ff2f7d] focus:ring-1 focus:ring-[#ff2f7d] transition-all font-semibold resize-none"
+              className="w-full border border-gray-200 bg-white text-gray-800 rounded-xl p-3 text-xs focus:outline-none focus:border-[#ff2f7d] focus:ring-1 focus:ring-[#ff2f7d] transition-all font-semibold resize-none"
               required
             />
           </div>
@@ -293,7 +293,7 @@ export default function ReviewFormModal({ isOpen, onClose, productId, productNam
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
-                      className="flex-1 py-2 bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="flex-1 py-2 bg-gray-50 text-gray-800 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Camera size={14} />
                       <span>Camera</span>
@@ -303,7 +303,7 @@ export default function ReviewFormModal({ isOpen, onClose, productId, productNam
                     <button
                       type="button"
                       onClick={() => galleryInputRef.current?.click()}
-                      className="flex-1 py-2 bg-gray-50 hover:bg-pink-50 hover:text-pink-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="flex-1 py-2 bg-gray-50 text-gray-800 hover:bg-pink-50 hover:text-pink-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <ImageIcon size={14} />
                       <span>Gallery</span>
