@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Banner } from '../types';
 import { Trash2, Edit2, CheckCircle2, XCircle, Upload, X } from 'lucide-react';
+import { uploadImageToServer } from '../utils/api';
 
 const resizeImage = (file: File, width: number, height: number): Promise<string> => {
   return new Promise((resolve) => {
@@ -38,22 +39,9 @@ const resizeImage = (file: File, width: number, height: number): Promise<string>
 };
 
 
-  const uploadImageToServer = async (base64Str: string) => {
-    if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Str, folder: 'banners' })
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-      return data.url;
-    } catch (e) {
-      console.error('Image upload failed:', e);
-      return base64Str;
-    }
-  };
+const handleUploadImage = async (base64Str: string) => {
+  return uploadImageToServer(base64Str, 'banners');
+};
 
 export default function BannerManager() {
   const [banners, setBanners] = useState<Banner[]>([]);

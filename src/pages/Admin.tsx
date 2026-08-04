@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { CategoryService } from '../services/db';
+import { uploadImageToServer, compressBase64Image } from '../utils/api';
 import { 
   ArrowLeft, Grid, ShoppingBag, Layers, ClipboardList, Users, User,
   Image as ImageIcon, Percent, CreditCard, Truck, MessageSquare, Phone,
@@ -225,22 +226,7 @@ export default function AdminPage() {
   };
 
   
-  const uploadImageToServer = async (base64Str: string, folder: string) => {
-    if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Str, folder })
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-      return data.url;
-    } catch (e) {
-      console.error('Image upload failed:', e);
-      return base64Str; // fallback to base64
-    }
-  };
+  // uploadImageToServer is imported from ../utils/api
 
   const loadCategoriesFromApi = () => {
     CategoryService.getCategories()

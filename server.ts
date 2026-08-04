@@ -2139,7 +2139,15 @@ async function startServer() {
         if (parts.length > 1) {
           const buffer = Buffer.from(parts[1], 'base64');
           fs.writeFileSync(filePath, buffer);
-          return res.json({ url: `/uploads/${folder}/${fileName}` });
+          
+          const rawHost = req.headers['x-forwarded-host'] || req.headers.host || 'ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app';
+          const hostStr = (Array.isArray(rawHost) ? rawHost[0] : rawHost).split(',')[0].trim();
+          const proto = (req.headers['x-forwarded-proto'] || 'https').toString().split(',')[0].trim();
+          
+          const isLocal = hostStr.includes('localhost') || hostStr.includes('127.0.0.1');
+          const finalHost = isLocal ? 'ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app' : hostStr;
+
+          return res.json({ url: `${proto}://${finalHost}/uploads/${folder}/${fileName}` });
         }
       } catch (localErr) {
         console.warn("Local upload fallback warning:", localErr);

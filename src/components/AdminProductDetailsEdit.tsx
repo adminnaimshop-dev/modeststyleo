@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Product } from '../types';
 import imageCompression from 'browser-image-compression';
+import { uploadImageToServer } from '../utils/api';
 import DatabaseWizard from './DatabaseWizard';
 import { getSupabaseClient } from '../lib/supabase';
 
@@ -522,21 +523,8 @@ const AdminProductDetailsEdit = ({
 
   // Handle auto-compression image compression function inside the component
 
-  const uploadImageToServer = async (base64Str: string) => {
-    if (!base64Str || !base64Str.startsWith('data:image')) return base64Str;
-    try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Str, folder: 'products' })
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
-      return data.url;
-    } catch (e) {
-      console.error('Image upload failed:', e);
-      return base64Str; // fallback to base64
-    }
+  const uploadProductImageToServer = async (base64Str: string) => {
+    return uploadImageToServer(base64Str, 'products');
   };
 
   const compressProductImage = async (file: File): Promise<string> => {
@@ -552,7 +540,7 @@ const AdminProductDetailsEdit = ({
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64 = reader.result as string;
-          const url = await uploadImageToServer(base64);
+          const url = await uploadProductImageToServer(base64);
           resolve(url);
         };
         reader.onerror = reject;
@@ -562,7 +550,7 @@ const AdminProductDetailsEdit = ({
         const reader = new FileReader();
         reader.onloadend = async () => {
           const base64 = reader.result as string;
-          const url = await uploadImageToServer(base64);
+          const url = await uploadProductImageToServer(base64);
           resolve(url);
         };
         reader.readAsDataURL(file);

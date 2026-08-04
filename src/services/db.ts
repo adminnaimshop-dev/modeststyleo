@@ -1,5 +1,5 @@
 import type { Category } from '../types';
-import { getApiBaseUrl, safeParseJson } from '../utils/api';
+import { getApiBaseUrl, safeParseJson, compressBase64Image } from '../utils/api';
 
 export const CategoryService = {
   async getCategories(): Promise<Category[]> {
@@ -21,11 +21,30 @@ export const CategoryService = {
     let res: Response;
     const baseUrl = getApiBaseUrl();
     const requestUrl = `${baseUrl}/api/categories`;
+
+    // Ensure all base64 images inside payload are lightweight (< 80KB)
+    const cleanedCategory: Record<string, any> = { ...category };
+    if (cleanedCategory.image_url) {
+      cleanedCategory.image_url = await compressBase64Image(cleanedCategory.image_url, 600, 600, 0.7);
+    }
+    if (cleanedCategory.image) {
+      cleanedCategory.image = cleanedCategory.image_url || await compressBase64Image(cleanedCategory.image, 600, 600, 0.7);
+    }
+    if (cleanedCategory.iconImage) {
+      cleanedCategory.iconImage = cleanedCategory.image_url || cleanedCategory.image || '';
+    }
+    if (cleanedCategory.banner_url) {
+      cleanedCategory.banner_url = await compressBase64Image(cleanedCategory.banner_url, 1200, 600, 0.7);
+    }
+    if (cleanedCategory.banner) {
+      cleanedCategory.banner = cleanedCategory.banner_url || await compressBase64Image(cleanedCategory.banner, 1200, 600, 0.7);
+    }
+
     try {
       res = await fetch(requestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(category)
+        body: JSON.stringify(cleanedCategory)
       });
     } catch (err: any) {
       console.error("🔍 [Category API Diagnostic] Network/Fetch Error:", {
