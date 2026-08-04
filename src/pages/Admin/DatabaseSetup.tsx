@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw, Database, Key, Globe, Copy, Check, Code2 } from 'lucide-react';
 import { COMBINED_SUPABASE_SQL } from '../../lib/supabase-schema';
+import { getApiBaseUrl } from '../../utils/api';
 
 export default function DatabaseSetup() {
   const [url, setUrl] = useState('');
@@ -13,22 +14,29 @@ export default function DatabaseSetup() {
   const [copiedSql, setCopiedSql] = useState(false);
 
   useEffect(() => {
-    fetchConfig();
     const storedApiBase = localStorage.getItem('naimshop_api_base_url') || '';
     setApiBaseUrl(storedApiBase);
+    // Fetch configuration using the resolved base URL
+    fetchConfig(storedApiBase);
   }, []);
 
-  const fetchConfig = async () => {
+  const fetchConfig = async (currentApiBase?: string) => {
     setLoading(true);
+    const apiBase = typeof currentApiBase === 'string' ? currentApiBase : (localStorage.getItem('naimshop_api_base_url') || '');
+    const cleanBase = apiBase.replace(/\/$/, '');
     try {
-      const res = await fetch('/api/supabase/diagnostics');
+      const res = await fetch(`${cleanBase}/api/supabase/diagnostics`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response. Please verify the API Base URL is correct.');
+      }
       const data = await res.json();
       if (data.config) {
         setUrl(data.config.url || '');
         setKey(data.config.key || '');
       }
       setConnected(!!data.connected);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch Supabase config:', err);
     } finally {
       setLoading(false);
@@ -39,23 +47,30 @@ export default function DatabaseSetup() {
     setTesting(true);
     setMessage({ text: 'Testing connection to Supabase...', type: 'info' });
     
+    const cleanApiBase = apiBaseUrl.trim().replace(/\/$/, '');
     // Save API base URL custom override
-    if (apiBaseUrl.trim()) {
-      localStorage.setItem('naimshop_api_base_url', apiBaseUrl.trim());
+    if (cleanApiBase) {
+      localStorage.setItem('naimshop_api_base_url', cleanApiBase);
     } else {
       localStorage.removeItem('naimshop_api_base_url');
     }
 
     try {
-      const res = await fetch('/api/supabase/update-config', {
+      const res = await fetch(`${cleanApiBase}/api/supabase/update-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, key })
       });
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response. Please verify your custom domain routing or API Base URL.');
+      }
       const data = await res.json();
       if (data.success) {
         setMessage({ text: 'Success! Connected to Supabase PostgreSQL Database & updated configuration.', type: 'success' });
         setConnected(true);
+        // Refresh local config using the newly saved API Base
+        fetchConfig(cleanApiBase);
       } else {
         setMessage({ text: `Connection Failed: ${data.error || 'Check credentials'}`, type: 'error' });
         setConnected(false);
