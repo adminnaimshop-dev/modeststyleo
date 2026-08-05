@@ -5,7 +5,7 @@
 export function getApiBaseUrl(): string {
   // 1. Compile-time environment variable override
   const envUrl = (import.meta as any).env?.VITE_API_BASE_URL || '';
-  if (envUrl) {
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     return envUrl.replace(/\/$/, ''); // strip trailing slash
   }
 
@@ -15,9 +15,23 @@ export function getApiBaseUrl(): string {
     if (overrideUrl) {
       return overrideUrl.replace(/\/$/, '');
     }
+
+    // 3. Fallback for custom domains (e.g. modeststyleo.com): route API calls directly to Cloud Run backend
+    const hostname = window.location.hostname;
+    const isCustomDomain = !hostname.endsWith('.run.app') && 
+                          !hostname.includes('localhost') && 
+                          !hostname.includes('127.0.0.1') && 
+                          !hostname.includes('gitpod') && 
+                          !hostname.includes('stackblitz') && 
+                          !hostname.includes('aistudio');
+    if (isCustomDomain) {
+      const savedOrigin = localStorage.getItem('naimshop_last_known_server_origin');
+      const fallbackUrl = savedOrigin || 'https://ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app';
+      return fallbackUrl.replace(/\/$/, '');
+    }
   }
 
-  // 3. Default relative path (relative to current origin - works seamlessly on custom domain, Cloud Run, localhost, etc.)
+  // 4. Default relative path (for Cloud Run and localhost)
   return '';
 }
 
@@ -124,20 +138,31 @@ if (typeof window !== 'undefined') {
  * Check if the response is valid JSON. If not, log and return safe representation or throw.
  */
 export async function safeParseJson(response: Response, rawText: string): Promise<any> {
+  const trimmed = rawText ? rawText.trim() : '';
+
+  // 1. If text is valid JSON formatted string, parse and return it immediately
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      // ignore and fall through
+    }
+  }
+
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     console.error(`[API Error] Expected JSON response but received: ${contentType}`);
-    console.error(`[API Error] Response content preview: ${rawText.substring(0, 500)}`);
+    console.error(`[API Error] Response content preview: ${trimmed.substring(0, 300)}`);
     throw new Error(
       `Server returned non-JSON response (${response.status}). This usually indicates a routing issue or misconfigured custom domain. Please verify that the API server is active and accessible.`
     );
   }
 
   try {
-    return rawText ? JSON.parse(rawText) : {};
+    return trimmed ? JSON.parse(trimmed) : {};
   } catch (err: any) {
     console.error("[API Error] JSON parse failure:", err);
-    throw new Error(`Server returned invalid JSON response (${response.status}): ${rawText.substring(0, 100)}`);
+    throw new Error(`Server returned invalid JSON response (${response.status}): ${trimmed.substring(0, 100)}`);
   }
 }
 
