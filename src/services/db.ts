@@ -22,23 +22,24 @@ export const CategoryService = {
     const baseUrl = getApiBaseUrl();
     const requestUrl = `${baseUrl}/api/categories`;
 
-    // Ensure all base64 images inside payload are lightweight (< 80KB)
+    // Ensure all base64 images inside payload are lightweight and deduplicated
     const cleanedCategory: Record<string, any> = { ...category };
-    if (cleanedCategory.image_url) {
-      cleanedCategory.image_url = await compressBase64Image(cleanedCategory.image_url, 600, 600, 0.7);
+    let mainImg = cleanedCategory.image_url || cleanedCategory.image || cleanedCategory.iconImage || '';
+    let mainBanner = cleanedCategory.banner_url || cleanedCategory.banner || cleanedCategory.mainBanner || '';
+
+    if (mainImg && typeof mainImg === 'string' && mainImg.startsWith('data:image')) {
+      mainImg = await compressBase64Image(mainImg, 500, 500, 0.7);
     }
-    if (cleanedCategory.image) {
-      cleanedCategory.image = cleanedCategory.image_url || await compressBase64Image(cleanedCategory.image, 600, 600, 0.7);
+    if (mainBanner && typeof mainBanner === 'string' && mainBanner.startsWith('data:image')) {
+      mainBanner = await compressBase64Image(mainBanner, 1000, 500, 0.7);
     }
-    if (cleanedCategory.iconImage) {
-      cleanedCategory.iconImage = cleanedCategory.image_url || cleanedCategory.image || '';
-    }
-    if (cleanedCategory.banner_url) {
-      cleanedCategory.banner_url = await compressBase64Image(cleanedCategory.banner_url, 1200, 600, 0.7);
-    }
-    if (cleanedCategory.banner) {
-      cleanedCategory.banner = cleanedCategory.banner_url || await compressBase64Image(cleanedCategory.banner, 1200, 600, 0.7);
-    }
+
+    cleanedCategory.image_url = mainImg;
+    cleanedCategory.image = mainImg;
+    cleanedCategory.iconImage = mainImg;
+    cleanedCategory.banner_url = mainBanner;
+    cleanedCategory.banner = mainBanner;
+    cleanedCategory.mainBanner = mainBanner;
 
     try {
       res = await fetch(requestUrl, {

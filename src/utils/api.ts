@@ -9,28 +9,15 @@ export function getApiBaseUrl(): string {
     return envUrl.replace(/\/$/, ''); // strip trailing slash
   }
 
-  // 2. Runtime explicit override set by admin
+  // 2. Runtime explicit override set by admin in settings
   if (typeof window !== 'undefined') {
     const overrideUrl = localStorage.getItem('naimshop_api_base_url');
     if (overrideUrl) {
       return overrideUrl.replace(/\/$/, '');
     }
-
-    // 3. Automatically captured last known backend server origin or default production server fallback
-    const lastKnownOrigin = localStorage.getItem('naimshop_last_known_server_origin');
-    const isCustomDomain = !window.location.hostname.endsWith('.run.app') && 
-                          !window.location.hostname.includes('localhost') && 
-                          !window.location.hostname.includes('127.0.0.1') && 
-                          !window.location.hostname.includes('gitpod') && 
-                          !window.location.hostname.includes('stackblitz');
-    
-    if (isCustomDomain) {
-      const fallbackUrl = lastKnownOrigin || 'https://ais-pre-arur6uzegonedscmwchpa7-210019841488.asia-east1.run.app';
-      return fallbackUrl.replace(/\/$/, '');
-    }
   }
 
-  // 4. Default relative path (relative to current origin)
+  // 3. Default relative path (relative to current origin - works seamlessly on custom domain, Cloud Run, localhost, etc.)
   return '';
 }
 
